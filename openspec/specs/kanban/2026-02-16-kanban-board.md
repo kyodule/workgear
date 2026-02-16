@@ -1,79 +1,97 @@
-# Delta Spec: Spec Artifact Viewer 全屏预览入口
+# Delta Spec: Node Log Dialog 改用可拖拽可调整大小的 Dialog
 
 > **Type:** MODIFIED
 > **Module:** kanban
 > **Date:** 2026-02-16
-> **Change:** markdown-fullscreen-preview
+> **Change:** jsonchange-name-draggable-resizable-dialog
 
 ## 概述
 
-修改看板模块中 Spec Artifact Viewer 的 ArtifactContent 组件，在查看模式下增加「全屏」按钮，让用户可以在全屏 Overlay 中阅读 OpenSpec 文档。
+修改看板模块中的 Node Log Dialog，将固定尺寸的 Shadcn Dialog 替换为 `<DraggableResizableDialog>`（基于 react-rnd），让用户在查看节点执行日志（包含大量 JSON 格式的 tool_input / tool_result）时可以自由拖拽和调整窗口大小。
 
 ---
 
 ## 场景
 
-### Scenario 1: ArtifactContent 查看模式显示全屏按钮
+### Scenario 1: Node Log Dialog 使用可拖拽可调整大小的容器
 
 ```gherkin
-Given 用户在 Spec Artifact Viewer 中查看某个 artifact（proposal / spec / design / tasks）
-  And 当前处于查看模式（非编辑模式）
-When ArtifactContent 组件渲染
-Then 工具栏中「编辑」按钮左侧显示一个「全屏」按钮（Maximize2 图标）
-  And 按钮文字为「全屏」
-  And 按钮样式为 variant="outline" size="sm"
+Given 用户在工作流执行页面点击某个节点查看日志
+When Node Log Dialog 打开
+Then Dialog 使用 DraggableResizableDialog 组件渲染（底层为 react-rnd）
+  And 初始尺寸为 896×600（原 max-w-4xl max-h-[80vh] 的近似值）
+  And Dialog 初始位置为视口居中
+  And 标题栏显示「执行日志 - {nodeName}」和运行状态 Badge
 ```
 
-### Scenario 2: 点击全屏按钮打开全屏预览
+### Scenario 2: 拖拽 Node Log Dialog 查看底层工作流
 
 ```gherkin
-Given ArtifactContent 查看模式显示全屏按钮
-When 用户点击「全屏」按钮
-Then 打开 MarkdownFullscreenDialog
-  And Dialog 标题显示当前 artifact 的 relativePath（如 "proposal.md"、"specs/kanban/MODIFIED-2026-02-16-kanban-board.md"）
-  And Dialog 内容为当前 artifact 的完整 Markdown 内容
+Given Node Log Dialog 处于打开状态
+  And 底层显示 DAG 工作流图
+When 用户拖拽 Dialog 标题栏将窗口移到屏幕一侧
+Then Dialog 移动到目标位置（受 bounds="window" 约束不超出视口）
+  And 用户可以同时看到 Dialog 内的日志和底层的工作流图
+  And 不影响日志内容的滚动和 WebSocket 实时更新
 ```
 
-### Scenario 3: 全屏预览关闭后回到查看模式
+### Scenario 3: 调整 Dialog 大小以查看完整 JSON
 
 ```gherkin
-Given 用户通过 Spec Artifact Viewer 打开了全屏预览
-When 用户关闭全屏 Dialog（ESC / 关闭按钮 / 点击遮罩）
-Then 回到 Spec Artifact Viewer 的查看模式
-  And Tab 选中状态和滚动位置保持不变
-  And 不触发数据重新加载
+Given Node Log Dialog 显示包含复杂 JSON 的 tool_input 或 tool_result
+  And JSON 内容在当前 Dialog 尺寸下需要滚动查看
+When 用户拖拽 Dialog 边缘扩大窗口（react-rnd resize 手柄）
+Then Dialog 尺寸增大
+  And 日志内容区域自动扩展，显示更多 JSON 内容
+  And CodeBlock 组件的 max-height 自适应 Dialog 高度
 ```
 
-### Scenario 4: 编辑模式下不显示全屏按钮
+### Scenario 4: 关闭 Node Log Dialog
 
 ```gherkin
-Given 用户在 Spec Artifact Viewer 中编辑某个 artifact
-  And 当前处于编辑模式（显示 Textarea）
-When ArtifactContent 组件渲染
-Then 不显示「全屏」按钮
-  And 仅显示「取消」和「保存」按钮（保持当前行为）
+Given Node Log Dialog 处于打开状态（可能已被拖拽或调整大小）
+When 用户按下 ESC 键
+  Or 用户点击关闭按钮
+  Or 用户点击遮罩层
+Then Dialog 关闭
+  And WebSocket 日志订阅正常清理
+  And 下次打开时 Dialog 恢复到初始居中位置和默认尺寸
 ```
 
-### Scenario 5: 不可编辑模式下仅显示全屏按钮
+### Scenario 5: 实时日志流在拖拽/调整大小后正常工作
 
 ```gherkin
-Given Spec Artifact Viewer 的 editable prop 为 false
-When ArtifactContent 查看模式渲染
-Then 工具栏仅显示「全屏」按钮
-  And 不显示「编辑」按钮
+Given Node Log Dialog 打开且节点状态为 running
+  And 用户已将 Dialog 拖拽到非居中位置并调整了大小
+When 新的日志事件通过 WebSocket 到达
+Then 日志内容正常追加到列表末尾
+  And 自动滚动行为不受 Dialog 位置/大小变化影响
+  And Dialog 位置和大小保持用户调整后的状态
+```
+
+### Scenario 6: Dialog 内日志条目布局自适应
+
+```gherkin
+Given Node Log Dialog 已被用户调整为较宽的尺寸（如 1200px 宽）
+When 日志中的 JSON CodeBlock 渲染
+Then CodeBlock 宽度自适应 Dialog 内容区域宽度
+  And 较短的 JSON 不会出现不必要的水平滚动
+  And 较长的 JSON 行仍可水平滚动查看
 ```
 
 ---
 
 ## UI 规格
 
-### 全屏按钮（Spec Artifact Viewer）
+### Node Log Dialog（改造后）
 
-| 属性 | 值 |
-|------|-----|
-| 图标 | `Maximize2`（lucide-react） |
-| 文字 | 「全屏」 |
-| 大小 | `size="sm"`（与编辑按钮一致） |
-| 位置 | 编辑按钮左侧，使用 `flex gap-2` 排列 |
-| 变体 | `variant="outline"` |
-| 可见条件 | 查看模式下始终可见（不受 editable prop 影响） |
+| 属性 | 改造前 | 改造后 |
+|------|--------|--------|
+| 容器组件 | Shadcn Dialog | DraggableResizableDialog（基于 react-rnd） |
+| 初始宽度 | `max-w-4xl`（896px） | `defaultWidth={896}` |
+| 初始高度 | `max-h-[80vh]` | `defaultHeight={600}` |
+| 位置 | 固定居中 | 初始居中，可拖拽（bounds="window"） |
+| 大小 | 固定 | 可调整，minWidth=480, minHeight=320 |
+| 标题栏 | DialogHeader | DraggableResizableDialog title prop（同时作为拖拽手柄） |
+| 内容滚动 | `h-[60vh] overflow-y-auto` | `flex-1 overflow-y-auto`（自适应） |
+| 关闭方式 | ESC / X / 遮罩 | ESC / X / 遮罩（保持不变） |

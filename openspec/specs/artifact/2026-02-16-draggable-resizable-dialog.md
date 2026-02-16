@@ -99,7 +99,8 @@ Then 初始尺寸为 896×600（通过 react-rnd 的 default prop 设置）
 | `defaultHeight` | `number` | `480` | 初始高度（px） |
 | `minWidth` | `number` | `320` | 最小宽度（px），传递给 react-rnd minWidth |
 | `minHeight` | `number` | `240` | 最小高度（px），传递给 react-rnd minHeight |
-| `className` | `string` | — | 内容区域额外 className |
+| `className` | `string` | — | 内容区域（`flex-1 overflow-y-auto p-4` 节点）额外 className |
+| `containerClassName` | `string` | — | 外层 `<Rnd>` 容器额外 className |
 | `overlay` | `boolean` | `true` | 是否显示遮罩层 |
 
 ## UI 规格
