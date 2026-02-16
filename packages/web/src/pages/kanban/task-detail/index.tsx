@@ -141,7 +141,7 @@ export function TaskDetail({ task, open, onOpenChange, onDeleted }: TaskDetailPr
         </SheetHeader>
 
         <div className="mt-6">
-          <Tabs defaultValue="timeline">
+          <Tabs defaultValue="flow">
             <TabsList className="w-full">
               <TabsTrigger value="timeline" className="flex-1">时间线</TabsTrigger>
               <TabsTrigger value="flow" className="flex-1">流程</TabsTrigger>
