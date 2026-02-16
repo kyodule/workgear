@@ -13,8 +13,22 @@ import (
 
 // ─── DAG Advancement ───
 
-// advanceDAG checks and activates downstream nodes after a node completes
+// advanceDAG checks and activates downstream nodes after a node completes.
+// Uses per-flow mutex to prevent concurrent advanceDAG calls from duplicating node activations.
 func (e *FlowExecutor) advanceDAG(ctx context.Context, flowRunID string) error {
+	mu := e.getDAGMutex(flowRunID)
+	mu.Lock()
+	defer mu.Unlock()
+
+	// 0. Early exit if flow is already in terminal state (idempotency guard)
+	flowRun, err := e.db.GetFlowRun(ctx, flowRunID)
+	if err != nil {
+		return fmt.Errorf("get flow run: %w", err)
+	}
+	if flowRun.Status == db.StatusCompleted || flowRun.Status == db.StatusFailed || flowRun.Status == db.StatusCancelled {
+		return nil
+	}
+
 	// 1. Load DAG
 	dag, err := e.getDAG(ctx, flowRunID)
 	if err != nil {
@@ -70,7 +84,7 @@ func (e *FlowExecutor) advanceDAG(ctx context.Context, flowRunID string) error {
 		}
 	}
 
-	// 5. Check if flow is complete
+	// 5. Check if flow is complete (all nodes completed successfully)
 	allCompleted, err := e.db.AllNodesCompleted(ctx, flowRunID)
 	if err != nil {
 		return fmt.Errorf("check all completed: %w", err)
@@ -96,7 +110,41 @@ func (e *FlowExecutor) advanceDAG(ctx context.Context, flowRunID string) error {
 			}
 		}
 
+		// Cleanup per-flow DAG mutex
+		e.cleanupDAGMutex(flowRunID)
+
 		e.logger.Infow("Flow completed", "flow_run_id", flowRunID)
+		return nil
+	}
+
+	// 6. Check if all nodes are terminal but not all completed (some failed)
+	allTerminal, err := e.db.AllNodesTerminal(ctx, flowRunID)
+	if err != nil {
+		return fmt.Errorf("check all terminal: %w", err)
+	}
+
+	if allTerminal {
+		// All nodes finished but some failed — mark flow as failed
+		if err := e.db.UpdateFlowRunError(ctx, flowRunID, db.StatusFailed, "部分节点执行失败"); err != nil {
+			return fmt.Errorf("fail flow: %w", err)
+		}
+
+		e.publishEvent(flowRunID, "", "", "flow.failed", map[string]any{
+			"error": "部分节点执行失败",
+		})
+
+		// Record timeline
+		flowRun, _ := e.db.GetFlowRun(ctx, flowRunID)
+		if flowRun != nil {
+			e.recordTimeline(ctx, flowRun.TaskID, flowRunID, "", "flow_failed", map[string]any{
+				"message": "流程执行失败：部分节点执行失败",
+			})
+		}
+
+		// Cleanup per-flow DAG mutex
+		e.cleanupDAGMutex(flowRunID)
+
+		e.logger.Infow("Flow failed (some nodes failed)", "flow_run_id", flowRunID)
 	}
 
 	return nil
@@ -268,6 +316,9 @@ func (e *FlowExecutor) CancelFlow(ctx context.Context, flowRunID string) error {
 	e.recordTimeline(ctx, flowRun.TaskID, flowRunID, "", "flow_cancelled", map[string]any{
 		"message": "流程已取消",
 	})
+
+	// Cleanup per-flow DAG mutex
+	e.cleanupDAGMutex(flowRunID)
 
 	// Auto-move task back to "Backlog" column
 	if err := e.db.UpdateTaskColumn(ctx, flowRun.TaskID, "Backlog"); err != nil {

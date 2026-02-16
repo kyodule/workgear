@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"go.uber.org/zap"
@@ -170,8 +171,14 @@ func main() {
 
 	sugar.Infof("Agent registry initialized with %d providers", len(providers))
 
-	// 4. Create flow executor
-	executor := engine.NewFlowExecutor(dbClient, eventBus, registry, sugar)
+	// 4. Create flow executor with concurrency control
+	maxConcurrency := 5
+	if v := os.Getenv("MAX_CONCURRENCY"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			maxConcurrency = n
+		}
+	}
+	executor := engine.NewFlowExecutor(dbClient, eventBus, registry, sugar, maxConcurrency)
 
 	// 5. Start the worker loop (recovers stale state + polls for work)
 	if err := executor.Start(ctx); err != nil {

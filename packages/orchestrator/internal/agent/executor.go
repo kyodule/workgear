@@ -49,7 +49,6 @@ type DockerExecutor struct {
 	cli          *client.Client
 	defaultImage string
 	logger       *zap.SugaredLogger
-	onLogEvent   func(event ClaudeStreamEvent) // Callback for real-time log events
 }
 
 // NewDockerExecutor creates a new Docker executor
@@ -151,7 +150,7 @@ func (e *DockerExecutor) Execute(ctx context.Context, req *ExecutorRequest) (*Ex
 	logStreamDone := make(chan struct{})
 	go func() {
 		defer close(logStreamDone)
-		if err := e.streamLogs(execCtx, containerID); err != nil {
+		if err := e.streamLogs(execCtx, containerID, req.OnLogEvent); err != nil {
 			e.logger.Debugw("Log stream ended", "error", err)
 		}
 	}()
@@ -206,13 +205,8 @@ func (e *DockerExecutor) Execute(ctx context.Context, req *ExecutorRequest) (*Ex
 	}, nil
 }
 
-// SetLogEventCallback sets the callback for real-time log events
-func (e *DockerExecutor) SetLogEventCallback(callback func(ClaudeStreamEvent)) {
-	e.onLogEvent = callback
-}
-
 // streamLogs reads container logs in real-time and parses stream-json events
-func (e *DockerExecutor) streamLogs(ctx context.Context, containerID string) error {
+func (e *DockerExecutor) streamLogs(ctx context.Context, containerID string, onLogEvent LogEventCallback) error {
 	logReader, err := e.cli.ContainerLogs(ctx, containerID, container.LogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
@@ -285,8 +279,8 @@ func (e *DockerExecutor) streamLogs(ctx context.Context, containerID string) err
 		)
 
 		// Trigger callback
-		if e.onLogEvent != nil {
-			e.onLogEvent(event)
+		if onLogEvent != nil {
+			onLogEvent(event)
 		} else {
 			e.logger.Warnw("Log event callback not set, event dropped")
 		}

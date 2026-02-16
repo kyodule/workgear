@@ -161,71 +161,73 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 		"git_branch", gitBranch,
 	)
 
-	// 5a. Inject real-time log streaming callback
+	// 5a. Build real-time log streaming callback (per-execution, thread-safe)
 	var logEvents []map[string]any
 	var logMutex sync.Mutex
 
-	if combinedAdapter, ok := adapter.(*agent.CombinedAdapter); ok {
-		if dockerExec, ok := combinedAdapter.Executor().(*agent.DockerExecutor); ok {
-			dockerExec.SetLogEventCallback(func(event agent.ClaudeStreamEvent) {
-				// Skip system/init events
-				if event.Type == "system" {
-					return
-				}
-
-				// Flatten nested structure into frontend-friendly events
-				if event.Message != nil {
-					for _, block := range event.Message.Content {
-						flatEvent := map[string]any{
-							"timestamp": event.Timestamp,
-						}
-						
-						switch block.Type {
-						case "text":
-							flatEvent["type"] = "assistant"
-							flatEvent["content"] = block.Text
-						case "tool_use":
-							flatEvent["type"] = "tool_use"
-							flatEvent["tool_name"] = block.Name
-							flatEvent["tool_input"] = block.Input
-						case "tool_result":
-							flatEvent["type"] = "tool_result"
-							flatEvent["content"] = fmt.Sprintf("%v", block.Content)
-							flatEvent["tool_use_id"] = block.ToolUseID
-						default:
-							flatEvent["type"] = block.Type
-							flatEvent["content"] = fmt.Sprintf("%v", block)
-						}
-
-						// Real-time push via event bus
-						e.publishEvent(nodeRun.FlowRunID, nodeRun.ID, nodeRun.NodeID, "node.log_stream", flatEvent)
-
-						// Collect for persistence
-						logMutex.Lock()
-						logEvents = append(logEvents, flatEvent)
-						logMutex.Unlock()
-					}
-					return
-				}
-
-				// Handle result event
-				if event.Type == "result" {
-					flatEvent := map[string]any{
-						"type":      "result",
-						"timestamp": event.Timestamp,
-						"subtype":   event.Subtype,
-						"result":    event.Result,
-					}
-					e.publishEvent(nodeRun.FlowRunID, nodeRun.ID, nodeRun.NodeID, "node.log_stream", flatEvent)
-					logMutex.Lock()
-					logEvents = append(logEvents, flatEvent)
-					logMutex.Unlock()
-				}
-			})
+	logCallback := agent.LogEventCallback(func(event agent.ClaudeStreamEvent) {
+		// Skip system/init events
+		if event.Type == "system" {
+			return
 		}
-	}
 
-	resp, err := adapter.Execute(ctx, agentReq)
+		// Flatten nested structure into frontend-friendly events
+		if event.Message != nil {
+			for _, block := range event.Message.Content {
+				flatEvent := map[string]any{
+					"timestamp": event.Timestamp,
+				}
+				
+				switch block.Type {
+				case "text":
+					flatEvent["type"] = "assistant"
+					flatEvent["content"] = block.Text
+				case "tool_use":
+					flatEvent["type"] = "tool_use"
+					flatEvent["tool_name"] = block.Name
+					flatEvent["tool_input"] = block.Input
+				case "tool_result":
+					flatEvent["type"] = "tool_result"
+					flatEvent["content"] = fmt.Sprintf("%v", block.Content)
+					flatEvent["tool_use_id"] = block.ToolUseID
+				default:
+					flatEvent["type"] = block.Type
+					flatEvent["content"] = fmt.Sprintf("%v", block)
+				}
+
+				// Real-time push via event bus
+				e.publishEvent(nodeRun.FlowRunID, nodeRun.ID, nodeRun.NodeID, "node.log_stream", flatEvent)
+
+				// Collect for persistence
+				logMutex.Lock()
+				logEvents = append(logEvents, flatEvent)
+				logMutex.Unlock()
+			}
+			return
+		}
+
+		// Handle result event
+		if event.Type == "result" {
+			flatEvent := map[string]any{
+				"type":      "result",
+				"timestamp": event.Timestamp,
+				"subtype":   event.Subtype,
+				"result":    event.Result,
+			}
+			e.publishEvent(nodeRun.FlowRunID, nodeRun.ID, nodeRun.NodeID, "node.log_stream", flatEvent)
+			logMutex.Lock()
+			logEvents = append(logEvents, flatEvent)
+			logMutex.Unlock()
+		}
+	})
+
+	// 5b. Execute via CombinedAdapter with per-request callback, or fallback to plain Execute
+	var resp *agent.AgentResponse
+	if combinedAdapter, ok := adapter.(*agent.CombinedAdapter); ok {
+		resp, err = combinedAdapter.ExecuteWithCallback(ctx, agentReq, logCallback)
+	} else {
+		resp, err = adapter.Execute(ctx, agentReq)
+	}
 	if err != nil {
 		// Persist logs even on failure
 		if len(logEvents) > 0 {

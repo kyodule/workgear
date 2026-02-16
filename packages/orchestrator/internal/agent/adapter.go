@@ -100,13 +100,17 @@ type Executor interface {
 	Execute(ctx context.Context, req *ExecutorRequest) (*ExecutorResponse, error)
 }
 
+// LogEventCallback is a function that receives real-time log events from agent execution
+type LogEventCallback func(event ClaudeStreamEvent)
+
 // ExecutorRequest is the runtime-layer request
 type ExecutorRequest struct {
-	Image   string            // Docker image name
-	Command []string          // Command to run inside container
-	Env     map[string]string // Environment variables
-	WorkDir string            // Working directory
-	Timeout time.Duration     // Execution timeout
+	Image          string            // Docker image name
+	Command        []string          // Command to run inside container
+	Env            map[string]string // Environment variables
+	WorkDir        string            // Working directory
+	Timeout        time.Duration     // Execution timeout
+	OnLogEvent     LogEventCallback  // Per-execution log event callback (thread-safe)
 }
 
 // ExecutorResponse is the runtime-layer response
@@ -130,7 +134,7 @@ func NewCombinedAdapter(ta TypeAdapter, exec Executor) *CombinedAdapter {
 
 func (a *CombinedAdapter) Name() string { return a.typeAdapter.Name() }
 
-// Executor returns the underlying executor (for injecting callbacks)
+// Executor returns the underlying executor (for type checking)
 func (a *CombinedAdapter) Executor() Executor { return a.executor }
 
 func (a *CombinedAdapter) Execute(ctx context.Context, req *AgentRequest) (*AgentResponse, error) {
@@ -138,6 +142,20 @@ func (a *CombinedAdapter) Execute(ctx context.Context, req *AgentRequest) (*Agen
 	if err != nil {
 		return nil, err
 	}
+	execResp, err := a.executor.Execute(ctx, execReq)
+	if err != nil {
+		return nil, err
+	}
+	return a.typeAdapter.ParseResponse(execResp)
+}
+
+// ExecuteWithCallback executes with a per-request log event callback (thread-safe)
+func (a *CombinedAdapter) ExecuteWithCallback(ctx context.Context, req *AgentRequest, onLogEvent LogEventCallback) (*AgentResponse, error) {
+	execReq, err := a.typeAdapter.BuildRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	execReq.OnLogEvent = onLogEvent
 	execResp, err := a.executor.Execute(ctx, execReq)
 	if err != nil {
 		return nil, err

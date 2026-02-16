@@ -23,9 +23,18 @@ type FlowExecutor struct {
 	logger   *zap.SugaredLogger
 	workerID string
 
-	// per-flow cancel context management (for cancelling running containers)
-	flowCancels   map[string]context.CancelFunc
+	// Concurrency control
+	maxConcurrency int            // global max concurrent agent executions
+	sem            chan struct{}   // semaphore to limit concurrency
+	wg             sync.WaitGroup // wait group for graceful shutdown
+
+	// per-flow cancel context management (supports multiple concurrent nodes per flow)
+	flowCancels   map[string]map[string]context.CancelFunc // flowRunID → {nodeRunID → cancel}
 	flowCancelsMu sync.Mutex
+
+	// per-flow DAG advancement mutex (prevents duplicate node activation)
+	dagMutexes   map[string]*sync.Mutex
+	dagMutexesMu sync.Mutex
 }
 
 // NewFlowExecutor creates a new flow executor
@@ -34,14 +43,21 @@ func NewFlowExecutor(
 	eventBus *event.Bus,
 	registry *agent.Registry,
 	logger *zap.SugaredLogger,
+	maxConcurrency int,
 ) *FlowExecutor {
+	if maxConcurrency <= 0 {
+		maxConcurrency = 5
+	}
 	return &FlowExecutor{
-		db:          dbClient,
-		eventBus:    eventBus,
-		registry:    registry,
-		logger:      logger,
-		workerID:    fmt.Sprintf("worker-%s", uuid.New().String()[:8]),
-		flowCancels: make(map[string]context.CancelFunc),
+		db:             dbClient,
+		eventBus:       eventBus,
+		registry:       registry,
+		logger:         logger,
+		workerID:       fmt.Sprintf("worker-%s", uuid.New().String()[:8]),
+		maxConcurrency: maxConcurrency,
+		sem:            make(chan struct{}, maxConcurrency),
+		flowCancels:    make(map[string]map[string]context.CancelFunc),
+		dagMutexes:     make(map[string]*sync.Mutex),
 	}
 }
 
@@ -57,28 +73,34 @@ func (e *FlowExecutor) Start(ctx context.Context) error {
 	}
 
 	// 2. Start worker loop
-	e.logger.Infow("Starting worker loop", "worker_id", e.workerID)
+	e.logger.Infow("Starting worker loop", "worker_id", e.workerID, "max_concurrency", e.maxConcurrency)
 	go e.runWorkerLoop(ctx)
 
 	return nil
 }
 
-// runWorkerLoop continuously polls DB for queued node runs
+// runWorkerLoop continuously polls DB for queued node runs and dispatches them concurrently
 func (e *FlowExecutor) runWorkerLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			e.logger.Info("Worker loop stopping, waiting for in-flight executions...")
+			e.wg.Wait()
 			e.logger.Info("Worker loop stopped")
 			return
-		default:
+		case e.sem <- struct{}{}: // acquire semaphore slot
 			nodeRun, err := e.db.AcquireNextNodeRun(ctx, e.workerID)
 			if err != nil {
+				<-e.sem // release slot
+				if ctx.Err() != nil {
+					return
+				}
 				e.logger.Errorw("Failed to acquire node run", "error", err)
 				time.Sleep(1 * time.Second)
 				continue
 			}
 			if nodeRun == nil {
-				// No work available, sleep briefly
+				<-e.sem // release slot — no work available
 				time.Sleep(500 * time.Millisecond)
 				continue
 			}
@@ -90,67 +112,118 @@ func (e *FlowExecutor) runWorkerLoop(ctx context.Context) {
 				"flow_run_id", nodeRun.FlowRunID,
 			)
 
-			// Create per-flow cancel context (for container termination on flow cancel)
+			e.wg.Add(1)
+
+			// Create and register cancel context BEFORE goroutine starts
+			// to prevent race with CancelFlow
 			flowCtx, cancel := context.WithCancel(ctx)
-			e.registerFlowCancel(nodeRun.FlowRunID, cancel)
+			e.registerFlowCancel(nodeRun.FlowRunID, nodeRun.ID, cancel)
 
-			// Publish node.started event
-			e.publishEvent(nodeRun.FlowRunID, nodeRun.ID, nodeRun.NodeID, "node.started", nil)
+			go func(nr *db.NodeRun, fCtx context.Context, cancelFn context.CancelFunc) {
+				defer e.wg.Done()
+				defer func() { <-e.sem }() // release semaphore slot when done
+				e.executeNodeAsync(ctx, fCtx, cancelFn, nr)
+			}(nodeRun, flowCtx, cancel)
+		}
+	}
+}
 
-			// Execute the node
-			if err := e.executeNode(flowCtx, nodeRun); err != nil {
-				if flowCtx.Err() == context.Canceled {
-					// Flow was cancelled — CancelFlow already handled status updates
-					e.logger.Infow("Node execution cancelled by flow cancel",
-						"node_run_id", nodeRun.ID,
-						"node_id", nodeRun.NodeID,
-					)
-				} else {
-					e.logger.Errorw("Node execution failed",
-						"node_run_id", nodeRun.ID,
-						"node_id", nodeRun.NodeID,
-						"error", err,
-					)
-					e.handleNodeError(ctx, nodeRun, err)
-				}
-			}
+// executeNodeAsync handles the full lifecycle of a single node execution in its own goroutine.
+// ctx is the parent context for DB operations; flowCtx is the per-node cancellable context.
+func (e *FlowExecutor) executeNodeAsync(ctx context.Context, flowCtx context.Context, cancel context.CancelFunc, nodeRun *db.NodeRun) {
+	defer func() {
+		e.unregisterFlowCancel(nodeRun.FlowRunID, nodeRun.ID)
+		cancel()
+	}()
 
-			e.unregisterFlowCancel(nodeRun.FlowRunID)
-			cancel() // cleanup
+	// Fast-fail: check if already cancelled between register and execution start
+	if flowCtx.Err() != nil {
+		e.logger.Infow("Node already cancelled before execution started",
+			"node_run_id", nodeRun.ID,
+			"node_id", nodeRun.NodeID,
+		)
+		return
+	}
 
-			// Advance DAG only if flow was not cancelled
-			if flowCtx.Err() != context.Canceled {
-				if err := e.advanceDAG(ctx, nodeRun.FlowRunID); err != nil {
-					e.logger.Errorw("Failed to advance DAG",
-						"flow_run_id", nodeRun.FlowRunID,
-						"error", err,
-					)
-				}
-			}
+	// Publish node.started event
+	e.publishEvent(nodeRun.FlowRunID, nodeRun.ID, nodeRun.NodeID, "node.started", nil)
+
+	// Execute the node
+	if err := e.executeNode(flowCtx, nodeRun); err != nil {
+		if flowCtx.Err() == context.Canceled {
+			// Flow was cancelled — CancelFlow already handled status updates
+			e.logger.Infow("Node execution cancelled by flow cancel",
+				"node_run_id", nodeRun.ID,
+				"node_id", nodeRun.NodeID,
+			)
+			return
+		}
+		e.logger.Errorw("Node execution failed",
+			"node_run_id", nodeRun.ID,
+			"node_id", nodeRun.NodeID,
+			"error", err,
+		)
+		e.handleNodeError(ctx, nodeRun, err)
+	}
+
+	// Advance DAG only if flow was not cancelled
+	if flowCtx.Err() != context.Canceled {
+		if err := e.advanceDAG(ctx, nodeRun.FlowRunID); err != nil {
+			e.logger.Errorw("Failed to advance DAG",
+				"flow_run_id", nodeRun.FlowRunID,
+				"error", err,
+			)
 		}
 	}
 }
 
 // ─── Flow Cancel Context Management ───
 
-func (e *FlowExecutor) registerFlowCancel(flowRunID string, cancel context.CancelFunc) {
+func (e *FlowExecutor) registerFlowCancel(flowRunID, nodeRunID string, cancel context.CancelFunc) {
 	e.flowCancelsMu.Lock()
 	defer e.flowCancelsMu.Unlock()
-	e.flowCancels[flowRunID] = cancel
+	if e.flowCancels[flowRunID] == nil {
+		e.flowCancels[flowRunID] = make(map[string]context.CancelFunc)
+	}
+	e.flowCancels[flowRunID][nodeRunID] = cancel
 }
 
-func (e *FlowExecutor) unregisterFlowCancel(flowRunID string) {
+func (e *FlowExecutor) unregisterFlowCancel(flowRunID, nodeRunID string) {
 	e.flowCancelsMu.Lock()
 	defer e.flowCancelsMu.Unlock()
-	delete(e.flowCancels, flowRunID)
+	if m, ok := e.flowCancels[flowRunID]; ok {
+		delete(m, nodeRunID)
+		if len(m) == 0 {
+			delete(e.flowCancels, flowRunID)
+		}
+	}
 }
 
 func (e *FlowExecutor) cancelFlowContext(flowRunID string) {
 	e.flowCancelsMu.Lock()
 	defer e.flowCancelsMu.Unlock()
-	if cancel, ok := e.flowCancels[flowRunID]; ok {
-		cancel()
+	if m, ok := e.flowCancels[flowRunID]; ok {
+		for _, cancel := range m {
+			cancel()
+		}
 	}
+}
+
+// ─── DAG Mutex Management ───
+
+func (e *FlowExecutor) getDAGMutex(flowRunID string) *sync.Mutex {
+	e.dagMutexesMu.Lock()
+	defer e.dagMutexesMu.Unlock()
+	if e.dagMutexes[flowRunID] == nil {
+		e.dagMutexes[flowRunID] = &sync.Mutex{}
+	}
+	return e.dagMutexes[flowRunID]
+}
+
+func (e *FlowExecutor) cleanupDAGMutex(flowRunID string) {
+	e.dagMutexesMu.Lock()
+	defer e.dagMutexesMu.Unlock()
+	delete(e.dagMutexes, flowRunID)
 }
 
 // executeNode dispatches execution based on node type
@@ -180,15 +253,8 @@ func (e *FlowExecutor) handleNodeError(ctx context.Context, nodeRun *db.NodeRun,
 		"error": errMsg,
 	})
 
-	// Mark flow as failed
-	if err := e.db.UpdateFlowRunError(ctx, nodeRun.FlowRunID, db.StatusFailed, errMsg); err != nil {
-		e.logger.Errorw("Failed to update flow run error", "error", err)
-	}
-
-	e.publishEvent(nodeRun.FlowRunID, "", "", "flow.failed", map[string]any{
-		"error":   errMsg,
-		"node_id": nodeRun.NodeID,
-	})
+	// Don't immediately mark flow as failed — let advanceDAG check if all nodes are terminal
+	// This allows other parallel nodes to continue executing
 }
 
 // publishEvent is a helper to publish events through the event bus

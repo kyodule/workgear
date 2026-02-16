@@ -260,29 +260,31 @@ func (s *OrchestratorServer) TestAgent(ctx context.Context, req *pb.TestAgentReq
 	// Collect logs
 	var logs []string
 	var logsMu sync.Mutex
-	if combined, ok := adapterInstance.(*agent.CombinedAdapter); ok {
-		if dockerExec, ok := combined.Executor().(*agent.DockerExecutor); ok {
-			dockerExec.SetLogEventCallback(func(evt agent.ClaudeStreamEvent) {
-				logLine := fmt.Sprintf("[%s] %s", evt.Type, evt.Subtype)
-				if evt.Message != nil {
-					for _, block := range evt.Message.Content {
-						if block.Type == "text" && block.Text != "" {
-							logLine += ": " + truncateStr(block.Text, 200)
-						}
-					}
+	logCallback := agent.LogEventCallback(func(evt agent.ClaudeStreamEvent) {
+		logLine := fmt.Sprintf("[%s] %s", evt.Type, evt.Subtype)
+		if evt.Message != nil {
+			for _, block := range evt.Message.Content {
+				if block.Type == "text" && block.Text != "" {
+					logLine += ": " + truncateStr(block.Text, 200)
 				}
-				logsMu.Lock()
-				logs = append(logs, logLine)
-				logsMu.Unlock()
-			})
+			}
 		}
-	}
+		logsMu.Lock()
+		logs = append(logs, logLine)
+		logsMu.Unlock()
+	})
 
 	// Execute with timeout
 	testCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	resp, err := adapterInstance.Execute(testCtx, agentReq)
+	var resp *agent.AgentResponse
+	var err error
+	if combined, ok := adapterInstance.(*agent.CombinedAdapter); ok {
+		resp, err = combined.ExecuteWithCallback(testCtx, agentReq, logCallback)
+	} else {
+		resp, err = adapterInstance.Execute(testCtx, agentReq)
+	}
 	if err != nil {
 		return &pb.TestAgentResponse{
 			Success: false,
