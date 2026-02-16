@@ -776,15 +776,6 @@ func (e *FlowExecutor) HandleRerun(ctx context.Context, nodeRunID string) error 
 		return fmt.Errorf("flow has been cancelled")
 	}
 
-	// Check for active nodes — disallow rerun if any node is queued/running/waiting_human
-	activeNodes, err := e.db.GetActiveNodeRuns(ctx, nodeRun.FlowRunID)
-	if err != nil {
-		return fmt.Errorf("check active nodes: %w", err)
-	}
-	if len(activeNodes) > 0 {
-		return fmt.Errorf("cannot rerun: flow has %d active node(s), wait for them to complete first", len(activeNodes))
-	}
-
 	if flowRun.DslSnapshot == nil {
 		return fmt.Errorf("flow run %s has no DSL snapshot", flowRun.ID)
 	}
@@ -792,6 +783,23 @@ func (e *FlowExecutor) HandleRerun(ctx context.Context, nodeRunID string) error 
 	_, dag, err := ParseDSL(*flowRun.DslSnapshot)
 	if err != nil {
 		return fmt.Errorf("parse DSL: %w", err)
+	}
+
+	// Check for active nodes — disallow rerun if any non-successor node is active
+	// Successor nodes will be reset during rerun, so they should not block the operation
+	successorSet := collectAllSuccessors(dag, nodeRun.NodeID)
+	activeNodes, err := e.db.GetActiveNodeRuns(ctx, nodeRun.FlowRunID)
+	if err != nil {
+		return fmt.Errorf("check active nodes: %w", err)
+	}
+	conflictingActive := 0
+	for _, an := range activeNodes {
+		if !successorSet[an.NodeID] {
+			conflictingActive++
+		}
+	}
+	if conflictingActive > 0 {
+		return fmt.Errorf("cannot rerun: flow has %d active non-successor node(s), wait for them to complete first", conflictingActive)
 	}
 
 	nodeDef := dag.GetNode(nodeRun.NodeID)
@@ -867,6 +875,22 @@ func (e *FlowExecutor) HandleRerun(ctx context.Context, nodeRunID string) error 
 	)
 
 	return nil
+}
+
+// collectAllSuccessors recursively collects all downstream node IDs from the given node
+func collectAllSuccessors(dag *DAG, nodeID string) map[string]bool {
+	result := make(map[string]bool)
+	var walk func(id string)
+	walk = func(id string) {
+		for _, succID := range dag.GetSuccessors(id) {
+			if !result[succID] {
+				result[succID] = true
+				walk(succID)
+			}
+		}
+	}
+	walk(nodeID)
+	return result
 }
 
 // resetSuccessorNodes creates new PENDING node runs for all nodes downstream of the given node
