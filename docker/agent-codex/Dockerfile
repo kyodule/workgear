@@ -8,6 +8,9 @@ RUN apt-get update && \
 # Install Codex CLI globally
 RUN npm install -g @openai/codex
 
+# Install pnpm (project requires pnpm workspace)
+RUN corepack enable && corepack prepare pnpm@10.28.2 --activate
+
 # Install OpenSpec CLI globally
 RUN npm install -g @fission-ai/openspec@latest
 

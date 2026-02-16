@@ -188,13 +188,30 @@ func modeInstruction(mode string) string {
 - 将变更目录移到 openspec/changes/archive/`
 	case "opsx_apply":
 		return `当前模式：OpenSpec 实施（opsx_apply）
-你正在使用 OpenSpec 工作流执行实施。请按以下步骤操作：
-1. 读取 openspec/changes/<change-name>/tasks.md 获取任务清单
-2. 读取 openspec/changes/<change-name>/design.md 了解技术方案
-3. 参考 openspec/changes/<change-name>/specs/ 中的需求和场景定义
-4. 逐项实施任务，完成后在 tasks.md 中标记 [x]
-5. 确保实施符合 specs 中定义的需求和场景
-6. 所有代码变更都要 git add`
+你正在一个已 clone 的 Git 仓库中（/workspace），拥有完整的文件系统访问权限。
+请严格按以下步骤操作：
+
+**第一步（必须）**: 读取 Spec 文件
+- 读取 openspec/changes/<change-name>/tasks.md 获取任务清单
+- 读取 openspec/changes/<change-name>/design.md 了解技术方案
+- 读取 openspec/changes/<change-name>/specs/ 中的所有场景定义文件
+- 如果任何文件读取失败，立即报错并停止
+
+**第二步**: 逐项实施 tasks.md 中的所有任务
+- 必须完成所有任务，不能只完成部分就停止
+- 安装依赖只是准备工作，核心任务是创建和修改代码文件
+- 如果遇到环境问题（如某个工具不可用），尝试自行安装或使用替代方案，然后继续执行后续任务
+- 完成每个任务后，在 tasks.md 中标记 [x]
+
+**第三步**: 验证实施结果
+- 确认所有新增文件都已创建
+- 确认所有修改文件都已更新
+- 所有代码变更都要 git add
+
+重要约束：
+- 你必须完成 tasks.md 中的所有任务，不能提前终止
+- 如果遇到错误，尝试解决后继续，不要直接退出
+- 确保实施符合 design.md 中的技术方案和 specs 中定义的场景`
 	case "generate_change_name":
 		return `当前模式：生成变更名称（generate_change_name）
 请根据需求描述生成一个简短的英文变更名称（slug 格式）。

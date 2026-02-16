@@ -287,6 +287,14 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 		}
 	}
 
+	// 6d. Validate opsx_apply result (detect incomplete implementation)
+	if mode == "opsx_apply" {
+		if validationErr := e.validateOpsxApplyResult(resp); validationErr != nil {
+			e.logger.Warnw("opsx_apply validation failed", "error", validationErr, "node_id", nodeRun.NodeID)
+			return fmt.Errorf("opsx_apply validation failed: %w", validationErr)
+		}
+	}
+
 	// 7. Save output and mark completed
 	if err := e.db.UpdateNodeRunOutput(ctx, nodeRun.ID, resp.Output); err != nil {
 		return fmt.Errorf("save output: %w", err)
@@ -914,4 +922,28 @@ func parseChangedFilesDetail(output string) []agent.ChangedFileDetail {
 		})
 	}
 	return details
+}
+
+// validateOpsxApplyResult validates that opsx_apply mode produced actual code changes
+func (e *FlowExecutor) validateOpsxApplyResult(resp *agent.AgentResponse) error {
+	// 1. Check if there are any Git changes
+	if resp.GitMetadata == nil || len(resp.GitMetadata.ChangedFiles) == 0 {
+		return fmt.Errorf("no code changes detected, agent may have terminated prematurely")
+	}
+
+	// 2. Check if only package manager files were modified (indicates only dependency installation, no actual implementation)
+	codeFileCount := 0
+	for _, f := range resp.GitMetadata.ChangedFiles {
+		if !strings.Contains(f, "package.json") &&
+			!strings.Contains(f, "package-lock.json") &&
+			!strings.Contains(f, "pnpm-lock.yaml") &&
+			!strings.HasPrefix(f, "node_modules/") {
+			codeFileCount++
+		}
+	}
+	if codeFileCount == 0 {
+		return fmt.Errorf("only package manager files were modified, no actual code implementation detected")
+	}
+
+	return nil
 }

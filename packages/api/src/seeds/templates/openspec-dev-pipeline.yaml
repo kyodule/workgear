@@ -103,16 +103,30 @@ nodes:
       opsx:
         change_name: "{{nodes.generate_change_name.outputs.change_name}}"
       prompt_template: |
-        请按照 OpenSpec 的 tasks.md 实施所有任务。
+        请按照 OpenSpec 的规划文档实施所有任务。
 
         变更名称：{{nodes.generate_change_name.outputs.change_name}}
+        Spec 文档目录：openspec/changes/{{nodes.generate_change_name.outputs.change_name}}/
 
-        要求：
-        1. 读取 openspec/changes/{{nodes.generate_change_name.outputs.change_name}}/tasks.md
-        2. 读取 openspec/changes/{{nodes.generate_change_name.outputs.change_name}}/design.md
-        3. 参考 openspec/changes/{{nodes.generate_change_name.outputs.change_name}}/specs/ 中的场景定义
-        4. 逐项实施，完成后在 tasks.md 中打勾 [x]
-        5. 确保代码符合 design.md 中的技术方案
+        实施步骤：
+        1. 首先读取以下文件了解完整的实施要求：
+           - openspec/changes/{{nodes.generate_change_name.outputs.change_name}}/tasks.md（任务清单）
+           - openspec/changes/{{nodes.generate_change_name.outputs.change_name}}/design.md（技术方案和代码示例）
+           - openspec/changes/{{nodes.generate_change_name.outputs.change_name}}/specs/ 目录下所有文件（场景定义）
+        2. 按 tasks.md 中的顺序逐项实施，每完成一项在 tasks.md 中标记 [x]
+        3. 严格按照 design.md 中的技术方案和代码示例实现
+        4. 确保实现覆盖 specs 中定义的所有场景
+        5. 所有变更完成后执行 git add -A
+
+        环境说明：
+        - 项目使用 pnpm workspace 管理依赖，优先使用 pnpm
+        - 如果某个工具不可用，可以自行安装或使用替代方案，但必须继续完成后续任务
+        - 不要因为某一步遇到问题就停止，尝试解决后继续
+
+        验收标准：
+        - tasks.md 中所有任务项都已标记 [x]
+        - design.md 中列出的所有新增文件都已创建
+        - design.md 中列出的所有修改文件都已更新
       git:
         create_branch: true
         branch_pattern: "feat/{{nodes.generate_change_name.outputs.change_name}}"

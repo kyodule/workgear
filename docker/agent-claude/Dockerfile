@@ -8,6 +8,9 @@ RUN apt-get update && \
 # Install Claude Code CLI globally
 RUN npm install -g @anthropic-ai/claude-code
 
+# Install pnpm (project requires pnpm workspace)
+RUN corepack enable && corepack prepare pnpm@10.28.2 --activate
+
 # Install OpenSpec CLI globally
 RUN npm install -g @fission-ai/openspec@latest
 
