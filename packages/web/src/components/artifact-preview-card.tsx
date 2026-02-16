@@ -4,7 +4,7 @@ import type { Artifact, ArtifactVersion } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { MarkdownRenderer } from '@/components/markdown-renderer'
-import { ChevronDown, ChevronRight, Pencil, Loader2, Maximize2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Pencil, Loader2, Maximize2, Eye } from 'lucide-react'
 
 interface ArtifactPreviewCardProps {
   artifact: Artifact
@@ -29,14 +29,8 @@ export function ArtifactPreviewCard({ artifact, onEdit, onFullscreen }: Artifact
   const [content, setContent] = useState('')
   const [latestVersion, setLatestVersion] = useState<ArtifactVersion | null>(null)
 
-  async function toggleExpand() {
-    if (expanded) {
-      setExpanded(false)
-      return
-    }
-
-    setExpanded(true)
-    if (content) return // already loaded
+  async function loadContent(): Promise<string> {
+    if (content) return content
 
     setLoading(true)
     try {
@@ -44,17 +38,36 @@ export function ArtifactPreviewCard({ artifact, onEdit, onFullscreen }: Artifact
         .get(`artifacts/${artifact.id}/versions`)
         .json<ArtifactVersion[]>()
       if (versions.length > 0) {
-        const latest = versions[0] // sorted desc by version
+        const latest = versions[0]
         setLatestVersion(latest)
         const data = await api
           .get(`artifacts/${artifact.id}/versions/${latest.id}/content`)
           .json<{ content: string }>()
         setContent(data.content)
+        return data.content
       }
     } catch (error) {
       console.error('Failed to load artifact content:', error)
     } finally {
       setLoading(false)
+    }
+    return ''
+  }
+
+  async function toggleExpand() {
+    if (expanded) {
+      setExpanded(false)
+      return
+    }
+    setExpanded(true)
+    await loadContent()
+  }
+
+  async function handleViewFullscreen() {
+    if (!onFullscreen) return
+    const loaded = await loadContent()
+    if (loaded) {
+      onFullscreen(artifact.title, loaded)
     }
   }
 
@@ -79,6 +92,17 @@ export function ArtifactPreviewCard({ artifact, onEdit, onFullscreen }: Artifact
           {typeLabels[artifact.type] || artifact.type}
         </Badge>
         <span className="flex-1 text-xs truncate">{artifact.title}</span>
+        {onFullscreen && (
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-5 w-5 shrink-0"
+            onClick={(e) => { e.stopPropagation(); handleViewFullscreen() }}
+            title="查看"
+          >
+            <Eye className="h-3 w-3" />
+          </Button>
+        )}
       </button>
 
       {expanded && (
