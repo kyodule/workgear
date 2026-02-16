@@ -53,6 +53,20 @@ export function NodeLogDialog({ nodeRun, open, onClose }: NodeLogDialogProps) {
     }
   }, [logs, autoScroll])
 
+  // Monitor scroll position for auto-scroll detection
+  useEffect(() => {
+    const scrollElement = scrollRef.current
+    if (!scrollElement) return
+
+    const handleScroll = () => {
+      const isAtBottom = scrollElement.scrollHeight - scrollElement.scrollTop <= scrollElement.clientHeight + 50
+      setAutoScroll(isAtBottom)
+    }
+
+    scrollElement.addEventListener('scroll', handleScroll)
+    return () => scrollElement.removeEventListener('scroll', handleScroll)
+  }, [scrollRef])
+
   if (!nodeRun) return null
 
   return (
@@ -63,6 +77,7 @@ export function NodeLogDialog({ nodeRun, open, onClose }: NodeLogDialogProps) {
       defaultHeight={600}
       minWidth={480}
       minHeight={320}
+      contentRef={scrollRef}
       title={
         <span className="flex items-center gap-2">
           执行日志 - {nodeRun.nodeName || nodeRun.id}
@@ -82,15 +97,7 @@ export function NodeLogDialog({ nodeRun, open, onClose }: NodeLogDialogProps) {
       ) : logs.length === 0 ? (
         <div className="py-12 text-center text-sm text-muted-foreground">暂无日志</div>
       ) : (
-        <div
-          ref={scrollRef}
-          className="h-full overflow-y-auto pr-4"
-          onScroll={(e) => {
-            const target = e.currentTarget
-            const isAtBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 50
-            setAutoScroll(isAtBottom)
-          }}
-        >
+        <div className="pr-4">
           <div className="space-y-2">
             {logs.map((log, i) => (
               <LogEntry key={i} event={log} />
@@ -108,7 +115,7 @@ function LogEntry({ event }: { event: LogStreamEvent }) {
   switch (event.type) {
     case 'assistant':
       return (
-        <div className="rounded-lg border bg-blue-50 p-3">
+        <div className="rounded-lg border bg-blue-50 dark:bg-blue-950 p-3">
           <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
             <Brain className="h-3 w-3" />
             <span>助手</span>
@@ -120,7 +127,7 @@ function LogEntry({ event }: { event: LogStreamEvent }) {
 
     case 'tool_use':
       return (
-        <div className="rounded-lg border bg-green-50 p-3">
+        <div className="rounded-lg border bg-green-50 dark:bg-green-950 p-3">
           <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
             <Wrench className="h-3 w-3" />
             <span>工具调用: {event.tool_name}</span>
@@ -139,7 +146,7 @@ function LogEntry({ event }: { event: LogStreamEvent }) {
 
     case 'tool_result':
       return (
-        <div className="rounded-lg border bg-gray-50 p-3">
+        <div className="rounded-lg border bg-gray-50 dark:bg-gray-900 p-3">
           <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
             <CheckCircle className="h-3 w-3" />
             <span>工具结果</span>
@@ -155,7 +162,7 @@ function LogEntry({ event }: { event: LogStreamEvent }) {
 
     case 'result':
       return (
-        <div className="rounded-lg border bg-gray-50 p-3">
+        <div className="rounded-lg border bg-gray-50 dark:bg-gray-900 p-3">
           <div className="flex items-center gap-2 text-sm font-medium text-green-600">
             <CheckCircle className="h-4 w-4" />
             <span>执行完成</span>
@@ -166,7 +173,7 @@ function LogEntry({ event }: { event: LogStreamEvent }) {
 
     default:
       return (
-        <div className="rounded-lg border bg-gray-50 p-3">
+        <div className="rounded-lg border bg-gray-50 dark:bg-gray-900 p-3">
           <div className="text-xs text-muted-foreground">{time}</div>
           <CodeBlock
             code={JSON.stringify(event, null, 2)}

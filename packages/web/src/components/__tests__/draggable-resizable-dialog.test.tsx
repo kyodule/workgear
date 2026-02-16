@@ -307,4 +307,205 @@ describe('DraggableResizableDialog', () => {
     )
     expect(triggerBtn).toHaveFocus()
   })
+
+  // --- Focus trap ---
+
+  it('traps Tab key within dialog', async () => {
+    render(
+      <DraggableResizableDialog {...defaultProps}>
+        <button data-testid="btn-1">Button 1</button>
+        <button data-testid="btn-2">Button 2</button>
+      </DraggableResizableDialog>,
+    )
+
+    const btn1 = screen.getByTestId('btn-1')
+    const btn2 = screen.getByTestId('btn-2')
+    const closeBtn = screen.getByTestId('dialog-close-button')
+
+    // Focus last focusable element (close button)
+    closeBtn.focus()
+    expect(closeBtn).toHaveFocus()
+
+    // Tab should wrap to first focusable element
+    await userEvent.keyboard('{Tab}')
+    expect(btn1).toHaveFocus()
+  })
+
+  it('traps Shift+Tab key within dialog', async () => {
+    render(
+      <DraggableResizableDialog {...defaultProps}>
+        <button data-testid="btn-1">Button 1</button>
+        <button data-testid="btn-2">Button 2</button>
+      </DraggableResizableDialog>,
+    )
+
+    const btn1 = screen.getByTestId('btn-1')
+    const closeBtn = screen.getByTestId('dialog-close-button')
+
+    // Focus first focusable element
+    btn1.focus()
+    expect(btn1).toHaveFocus()
+
+    // Shift+Tab should wrap to last focusable element
+    await userEvent.keyboard('{Shift>}{Tab}{/Shift}')
+    expect(closeBtn).toHaveFocus()
+  })
+
+  // --- ESC key stopPropagation ---
+
+  it('calls stopPropagation on ESC key', async () => {
+    const onOpenChange = vi.fn()
+    const outerHandler = vi.fn()
+
+    // Add outer ESC handler
+    document.addEventListener('keydown', outerHandler)
+
+    render(
+      <DraggableResizableDialog {...defaultProps} onOpenChange={onOpenChange} />,
+    )
+
+    await userEvent.keyboard('{Escape}')
+
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    // Outer handler should NOT be called due to stopPropagation
+    expect(outerHandler).not.toHaveBeenCalled()
+
+    document.removeEventListener('keydown', outerHandler)
+  })
+
+  // --- Body scroll lock ---
+
+  it('locks body scroll when opened', () => {
+    const originalOverflow = document.body.style.overflow
+    render(<DraggableResizableDialog {...defaultProps} open={true} />)
+    expect(document.body.style.overflow).toBe('hidden')
+    // Cleanup
+    document.body.style.overflow = originalOverflow
+  })
+
+  it('restores body scroll when closed', () => {
+    const originalOverflow = document.body.style.overflow
+    const { rerender } = render(
+      <DraggableResizableDialog {...defaultProps} open={true} />,
+    )
+    expect(document.body.style.overflow).toBe('hidden')
+
+    rerender(<DraggableResizableDialog {...defaultProps} open={false} />)
+    expect(document.body.style.overflow).toBe(originalOverflow)
+  })
+
+  it('handles multiple dialogs with reference counting', () => {
+    const originalOverflow = document.body.style.overflow
+
+    // Open first dialog
+    const { rerender: rerender1 } = render(
+      <DraggableResizableDialog {...defaultProps} open={true} />,
+    )
+    expect(document.body.style.overflow).toBe('hidden')
+
+    // Open second dialog
+    const { rerender: rerender2 } = render(
+      <DraggableResizableDialog {...defaultProps} open={true} />,
+    )
+    expect(document.body.style.overflow).toBe('hidden')
+
+    // Close first dialog - should still be locked
+    rerender1(<DraggableResizableDialog {...defaultProps} open={false} />)
+    expect(document.body.style.overflow).toBe('hidden')
+
+    // Close second dialog - should restore
+    rerender2(<DraggableResizableDialog {...defaultProps} open={false} />)
+    expect(document.body.style.overflow).toBe(originalOverflow)
+  })
+
+  // --- Footer prop ---
+
+  it('renders footer when provided', () => {
+    render(
+      <DraggableResizableDialog
+        {...defaultProps}
+        footer={<button data-testid="footer-btn">Save</button>}
+      />,
+    )
+    expect(screen.getByTestId('footer-btn')).toBeInTheDocument()
+  })
+
+  it('does not render footer when undefined', () => {
+    render(<DraggableResizableDialog {...defaultProps} footer={undefined} />)
+    const dialog = screen.getByTestId('draggable-resizable-dialog')
+    expect(dialog.querySelector('.border-t')).not.toBeInTheDocument()
+  })
+
+  // --- contentRef prop ---
+
+  it('exposes content area via contentRef', () => {
+    const ref = { current: null as HTMLDivElement | null }
+    render(
+      <DraggableResizableDialog {...defaultProps} contentRef={ref}>
+        <div data-testid="content">Content</div>
+      </DraggableResizableDialog>,
+    )
+    expect(ref.current).toBeInstanceOf(HTMLDivElement)
+    expect(ref.current).toContainElement(screen.getByTestId('content'))
+  })
+
+  it('supports callback ref for contentRef', () => {
+    let capturedNode: HTMLDivElement | null = null
+    const callbackRef = (node: HTMLDivElement | null) => {
+      capturedNode = node
+    }
+
+    render(
+      <DraggableResizableDialog {...defaultProps} contentRef={callbackRef}>
+        <div data-testid="content">Content</div>
+      </DraggableResizableDialog>,
+    )
+
+    expect(capturedNode).toBeInstanceOf(HTMLDivElement)
+    expect(capturedNode).toContainElement(screen.getByTestId('content'))
+  })
+
+  // --- Focus management ---
+
+  it('focuses the dialog when opened', async () => {
+    render(<DraggableResizableDialog {...defaultProps} />)
+    // Wait for requestAnimationFrame focus
+    await new Promise((r) => setTimeout(r, 50))
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveFocus()
+  })
+
+  it('restores focus to previously focused element on close', async () => {
+    // Create a button that will be focused before dialog opens
+    const { rerender } = render(
+      <>
+        <button data-testid="trigger-btn">Trigger</button>
+        <DraggableResizableDialog {...defaultProps} open={false} />
+      </>,
+    )
+
+    // Focus the trigger button
+    const triggerBtn = screen.getByTestId('trigger-btn')
+    triggerBtn.focus()
+    expect(triggerBtn).toHaveFocus()
+
+    // Open dialog — should capture previousFocus and move focus to dialog
+    rerender(
+      <>
+        <button data-testid="trigger-btn">Trigger</button>
+        <DraggableResizableDialog {...defaultProps} open={true} />
+      </>,
+    )
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.getByRole('dialog')).toHaveFocus()
+
+    // Close dialog — should restore focus to trigger button
+    rerender(
+      <>
+        <button data-testid="trigger-btn">Trigger</button>
+        <DraggableResizableDialog {...defaultProps} open={false} />
+      </>,
+    )
+    expect(triggerBtn).toHaveFocus()
+  })
 })

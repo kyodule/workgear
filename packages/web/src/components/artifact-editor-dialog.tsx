@@ -1,13 +1,7 @@
 import { useState } from 'react'
 import { api } from '@/lib/api'
 import type { Artifact } from '@/lib/types'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog'
+import { DraggableResizableDialog } from '@/components/draggable-resizable-dialog'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
@@ -79,36 +73,26 @@ export function ArtifactEditorDialog({
   if (!artifact) return null
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Badge variant="outline" className="text-xs">
-              {typeLabels[artifact.type] || artifact.type}
-            </Badge>
-            <span>{artifact.title}</span>
-            <span className="text-sm text-muted-foreground font-normal">
-              v{currentVersion} → v{currentVersion + 1}
-            </span>
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="flex-1 min-h-0 space-y-3">
-          <Textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            className="min-h-[400px] max-h-[50vh] font-mono text-sm resize-y"
-            placeholder="输入产物内容..."
-          />
-          <Input
-            value={changeSummary}
-            onChange={(e) => setChangeSummary(e.target.value)}
-            placeholder="变更说明（可选）"
-            className="text-sm"
-          />
-        </div>
-
-        <DialogFooter>
+    <DraggableResizableDialog
+      open={open}
+      onOpenChange={handleOpenChange}
+      defaultWidth={768}
+      defaultHeight={560}
+      minWidth={480}
+      minHeight={400}
+      title={
+        <span className="flex items-center gap-2">
+          <Badge variant="outline" className="text-xs">
+            {typeLabels[artifact.type] || artifact.type}
+          </Badge>
+          <span>{artifact.title}</span>
+          <span className="text-sm text-muted-foreground font-normal">
+            v{currentVersion} → v{currentVersion + 1}
+          </span>
+        </span>
+      }
+      footer={
+        <>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             取消
           </Button>
@@ -116,8 +100,23 @@ export function ArtifactEditorDialog({
             {saving && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
             保存新版本
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <div className="space-y-3 h-full flex flex-col">
+        <Textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          className="flex-1 min-h-[200px] font-mono text-sm resize-y"
+          placeholder="输入产物内容..."
+        />
+        <Input
+          value={changeSummary}
+          onChange={(e) => setChangeSummary(e.target.value)}
+          placeholder="变更说明（可选）"
+          className="text-sm"
+        />
+      </div>
+    </DraggableResizableDialog>
   )
 }
