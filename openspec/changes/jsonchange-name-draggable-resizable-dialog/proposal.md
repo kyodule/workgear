@@ -32,7 +32,7 @@
 
 ### 具体方案
 
-1. 创建通用 `<DraggableResizableDialog>` 组件，基于原生 pointer events 实现拖拽和调整大小（不引入新依赖）
+1. 引入成熟的 [react-rnd](https://github.com/bokuweb/react-rnd) 库，基于其 `<Rnd>` 组件封装通用 `<DraggableResizableDialog>`
 2. 组件支持：标题栏拖拽移动、四边和四角调整大小、最小/最大尺寸约束、ESC 关闭
 3. 改造 `node-log-dialog.tsx`：使用新组件替换固定尺寸的 Shadcn Dialog
 4. 保留 Shadcn Dialog 的视觉风格（边框、圆角、阴影、背景色），确保 UI 一致性
@@ -45,12 +45,14 @@
 |------|------|------|
 | artifact (Components) | 新增文件 | 新增 `<DraggableResizableDialog>` 通用组件 |
 | kanban (Node Log) | 代码变更 | `node-log-dialog.tsx` 改用可拖拽 Dialog |
+| 依赖 | 新增 npm 包 | `react-rnd`（~12KB gzipped，成熟稳定，周下载量 100K+） |
 
 ### 涉及文件
 
 | 文件路径 | 变更类型 | 说明 |
 |----------|----------|------|
-| `packages/web/src/components/draggable-resizable-dialog.tsx` | ADD | 可拖拽可调整大小的 Dialog 通用组件 |
+| `packages/web/package.json` | MODIFY | 新增 `react-rnd` 依赖 |
+| `packages/web/src/components/draggable-resizable-dialog.tsx` | ADD | 基于 react-rnd 封装的可拖拽可调整大小 Dialog 通用组件 |
 | `packages/web/src/components/node-log-dialog.tsx` | MODIFY | 使用 DraggableResizableDialog 替换 Shadcn Dialog |
 
 ### 不涉及
@@ -60,7 +62,6 @@
 - Shadcn Dialog 基础组件不修改（保留给其他简单弹窗使用）
 - Orchestrator / Go 服务无变更
 - 不影响其他使用 Shadcn Dialog 的组件（create-task-dialog、start-flow-dialog 等）
-- 不引入新的 npm 依赖（使用原生 pointer events 实现）
 
 ## 非目标
 
@@ -74,6 +75,7 @@
 ## 风险评估
 
 - **风险等级：低** — 变更集中在前端 UI 交互层，不影响数据模型和核心流程
-- 使用原生 pointer events 实现拖拽，无需引入新依赖，包体积无增长
+- 使用成熟的 [react-rnd](https://github.com/bokuweb/react-rnd) 库，避免自己造轮子，拖拽和 resize 行为经过社区大量验证
+- react-rnd 体积小（~12KB gzipped），依赖 react-draggable 和 re-resizable，均为成熟库
 - DraggableResizableDialog 是独立新组件，不修改 Shadcn Dialog 基础组件，向后兼容
 - Node Log Dialog 的数据加载逻辑和 WebSocket 订阅不受影响，仅替换外层容器

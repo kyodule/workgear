@@ -7,7 +7,7 @@
 
 ## 概述
 
-修改看板模块中的 Node Log Dialog，将固定尺寸的 Shadcn Dialog 替换为 `<DraggableResizableDialog>`，让用户在查看节点执行日志（包含大量 JSON 格式的 tool_input / tool_result）时可以自由拖拽和调整窗口大小。
+修改看板模块中的 Node Log Dialog，将固定尺寸的 Shadcn Dialog 替换为 `<DraggableResizableDialog>`（基于 react-rnd），让用户在查看节点执行日志（包含大量 JSON 格式的 tool_input / tool_result）时可以自由拖拽和调整窗口大小。
 
 ---
 
@@ -18,7 +18,7 @@
 ```gherkin
 Given 用户在工作流执行页面点击某个节点查看日志
 When Node Log Dialog 打开
-Then Dialog 使用 DraggableResizableDialog 组件渲染
+Then Dialog 使用 DraggableResizableDialog 组件渲染（底层为 react-rnd）
   And 初始尺寸为 896×600（原 max-w-4xl max-h-[80vh] 的近似值）
   And Dialog 初始位置为视口居中
   And 标题栏显示「执行日志 - {nodeName}」和运行状态 Badge
@@ -30,7 +30,7 @@ Then Dialog 使用 DraggableResizableDialog 组件渲染
 Given Node Log Dialog 处于打开状态
   And 底层显示 DAG 工作流图
 When 用户拖拽 Dialog 标题栏将窗口移到屏幕一侧
-Then Dialog 移动到目标位置
+Then Dialog 移动到目标位置（受 bounds="window" 约束不超出视口）
   And 用户可以同时看到 Dialog 内的日志和底层的工作流图
   And 不影响日志内容的滚动和 WebSocket 实时更新
 ```
@@ -40,7 +40,7 @@ Then Dialog 移动到目标位置
 ```gherkin
 Given Node Log Dialog 显示包含复杂 JSON 的 tool_input 或 tool_result
   And JSON 内容在当前 Dialog 尺寸下需要滚动查看
-When 用户拖拽 Dialog 边缘扩大窗口
+When 用户拖拽 Dialog 边缘扩大窗口（react-rnd resize 手柄）
 Then Dialog 尺寸增大
   And 日志内容区域自动扩展，显示更多 JSON 内容
   And CodeBlock 组件的 max-height 自适应 Dialog 高度
@@ -87,11 +87,11 @@ Then CodeBlock 宽度自适应 Dialog 内容区域宽度
 
 | 属性 | 改造前 | 改造后 |
 |------|--------|--------|
-| 容器组件 | Shadcn Dialog | DraggableResizableDialog |
+| 容器组件 | Shadcn Dialog | DraggableResizableDialog（基于 react-rnd） |
 | 初始宽度 | `max-w-4xl`（896px） | `defaultWidth={896}` |
 | 初始高度 | `max-h-[80vh]` | `defaultHeight={600}` |
-| 位置 | 固定居中 | 初始居中，可拖拽 |
+| 位置 | 固定居中 | 初始居中，可拖拽（bounds="window"） |
 | 大小 | 固定 | 可调整，minWidth=480, minHeight=320 |
-| 标题栏 | DialogHeader | DraggableResizableDialog title prop |
+| 标题栏 | DialogHeader | DraggableResizableDialog title prop（同时作为拖拽手柄） |
 | 内容滚动 | `h-[60vh] overflow-y-auto` | `flex-1 overflow-y-auto`（自适应） |
 | 关闭方式 | ESC / X / 遮罩 | ESC / X / 遮罩（保持不变） |

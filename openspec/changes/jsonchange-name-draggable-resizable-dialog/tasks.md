@@ -1,43 +1,40 @@
 # Tasks: Draggable Resizable Dialog — 可拖拽可调整大小的 Dialog 组件
 
+## 模块：依赖管理
+
+### 安装 react-rnd
+
+- [ ] 在 `packages/web/` 下执行 `npm install react-rnd` **[S]**
+- [ ] 确认 `package.json` 中已添加 `react-rnd` 依赖 **[S]**
+- [ ] 确认 TypeScript 类型正常（react-rnd 自带类型定义） **[S]**
+
 ## 模块：通用组件 (packages/web/src/components)
 
 ### 创建 DraggableResizableDialog 组件
 
 - [ ] 新建 `draggable-resizable-dialog.tsx` 文件 **[S]**
 - [ ] 定义 `DraggableResizableDialogProps` 接口（open、onOpenChange、title、children、defaultWidth、defaultHeight、minWidth、minHeight、className、overlay） **[S]**
-- [ ] 实现 `createPortal` 渲染到 `document.body`，open 为 false 时返回 null **[S]**
+- [ ] 使用 `createPortal` 渲染到 `document.body`，open 为 false 时返回 null **[S]**
 - [ ] 实现遮罩层（`bg-black/80 fixed inset-0 z-50`），点击遮罩调用 `onOpenChange(false)` **[S]**
-- [ ] 实现 Dialog 容器（`fixed z-50 flex flex-col rounded-lg border bg-background shadow-lg`），使用 inline style 控制 left/top/width/height **[S]**
-- [ ] 实现标题栏（`border-b px-4 py-3 cursor-grab`），显示 title 和关闭按钮（X 图标） **[S]**
+- [ ] 使用 react-rnd 的 `<Rnd>` 组件作为 Dialog 容器，设置 `default` prop 为视口居中位置和默认尺寸 **[M]**
+- [ ] 配置 `dragHandleClassName="drag-handle"` 将拖拽限定在标题栏 **[S]**
+- [ ] 配置 `bounds="window"` 防止 Dialog 被拖出视口 **[S]**
+- [ ] 配置 `minWidth` / `minHeight` 传递尺寸约束 **[S]**
+- [ ] 实现标题栏（`className="drag-handle" border-b px-4 py-3 cursor-grab`），显示 title 和关闭按钮（X 图标） **[S]**
 - [ ] 实现内容区域（`flex-1 overflow-y-auto p-4`），渲染 children **[S]**
-
-### 实现拖拽功能
-
-- [ ] 实现 `position` state（`{ x, y }`），open 时初始化为视口居中 **[S]**
-- [ ] 标题栏 `onPointerDown` → `setPointerCapture` → `pointermove` 更新 position → `pointerup` 结束 **[M]**
-- [ ] 拖拽时标题栏光标变为 `cursor-grabbing`（通过 `active:cursor-grabbing`） **[S]**
-- [ ] 确认拖拽不会将 Dialog 完全拖出视口（标题栏至少部分可见） **[S]**
-
-### 实现 Resize 功能
-
-- [ ] 实现 `size` state（`{ width, height }`），open 时初始化为 defaultWidth × defaultHeight **[S]**
-- [ ] 创建 `getResizeHandleStyle` 辅助函数，返回 8 个方向的定位样式和光标 **[S]**
-- [ ] 渲染 8 个透明 resize 手柄（n、s、e、w、ne、nw、se、sw） **[S]**
-- [ ] 实现 `handleResizeStart`：pointerdown → 根据方向计算 dx/dy → 更新 size 和 position → pointerup 结束 **[M]**
-- [ ] 确认 resize 不小于 minWidth / minHeight 约束 **[S]**
+- [ ] 设置 `style={{ display: 'flex' }}` 确保 Rnd 内部 flex 布局生效 **[S]**
 
 ### 实现关闭和重置
 
 - [ ] ESC 键监听：open 时 `addEventListener('keydown')`，ESC 触发 `onOpenChange(false)` **[S]**
 - [ ] 关闭按钮（X 图标）点击触发 `onOpenChange(false)` **[S]**
-- [ ] open 变为 true 时重置 position 和 size 到初始值 **[S]**
+- [ ] 使用 `key={String(open)}` 确保每次打开时重新挂载 `<Rnd>`，恢复初始位置和尺寸 **[S]**
 
 ## 模块：Node Log Dialog (packages/web/src/components)
 
 ### 改造 NodeLogDialog 使用 DraggableResizableDialog
 
-- [ ] 替换 import：移除 Shadcn Dialog 相关导入，导入 `DraggableResizableDialog` **[S]**
+- [ ] 替换 import：移除 Shadcn Dialog 相关导入（Dialog、DialogContent、DialogHeader、DialogTitle），导入 `DraggableResizableDialog` **[S]**
 - [ ] 替换 JSX 容器：`<Dialog>` + `<DialogContent>` → `<DraggableResizableDialog>` **[S]**
 - [ ] 设置 `defaultWidth={896}` `defaultHeight={600}` `minWidth={480}` `minHeight={320}` **[S]**
 - [ ] 将标题内容（节点名称 + 状态 Badge）传入 `title` prop **[S]**
@@ -52,6 +49,7 @@
 
 - [ ] 打开 Dialog → 确认居中显示，尺寸为 defaultWidth × defaultHeight **[S]**
 - [ ] 拖拽标题栏 → 确认 Dialog 跟随移动 **[S]**
+- [ ] 确认 Dialog 不会被拖出视口（bounds="window"） **[S]**
 - [ ] 拖拽四边 → 确认单方向调整大小正确 **[S]**
 - [ ] 拖拽四角 → 确认双方向调整大小正确 **[S]**
 - [ ] 调整到最小尺寸 → 确认不小于 minWidth / minHeight **[S]**
