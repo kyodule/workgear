@@ -255,6 +255,8 @@ function ProviderCard({
             ))}
           </div>
 
+          {/* Models 区域 — droid 类型不显示（模型已内嵌在 Provider 配置中） */}
+          {provider.agentType !== 'droid' && (
           <div className="mt-3 border-t pt-3">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium">Models</span>
@@ -292,6 +294,7 @@ function ProviderCard({
               )}
             </div>
           </div>
+          )}
         </div>
 
         <div className="flex items-center gap-1 ml-4">

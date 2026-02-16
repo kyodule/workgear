@@ -23,5 +23,6 @@ func (f *DroidFactory) CreateAdapter(logger *zap.SugaredLogger, providerID strin
 	}
 
 	adapter := NewDroidAdapter(f.PromptBuilder, providerID, providerType, apiKey, baseURL, modelName)
+	adapter.config = config // Pass full config for optional BYOK fields
 	return NewCombinedAdapter(adapter, dockerExec), nil
 }

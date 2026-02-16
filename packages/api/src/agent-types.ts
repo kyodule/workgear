@@ -41,11 +41,14 @@ export const AGENT_TYPES: Record<string, AgentTypeDefinition> = {
   },
   'droid': {
     name: 'Droid',
-    description: 'Droid Agent',
+    description: 'Factory Droid CLI Agent',
     providerFields: [
-      { key: 'provider_type', label: 'LLM Provider', type: 'select', required: true, options: ['anthropic', 'openai'] },
-      { key: 'base_url', label: 'Base URL', type: 'string', required: true },
+      { key: 'provider_type', label: 'LLM Provider', type: 'select', required: true, options: ['anthropic', 'openai', 'generic-chat-completion-api'] },
+      { key: 'base_url', label: 'Base URL', type: 'string', required: true, placeholder: 'https://api.anthropic.com' },
       { key: 'api_key', label: 'API Key', type: 'secret', required: true },
+      { key: 'model_id', label: 'Model ID', type: 'string', required: false, placeholder: 'claude-sonnet-4-5-20250929' },
+      { key: 'display_name', label: 'Display Name', type: 'string', required: false, placeholder: 'My Custom Model' },
+      { key: 'max_output_tokens', label: 'Max Output Tokens', type: 'string', required: false, placeholder: '16384' },
     ],
   },
 }
