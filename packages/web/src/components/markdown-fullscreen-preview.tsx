@@ -64,7 +64,7 @@ export function MarkdownFullscreenPreview({
   return (
     <div
       className={cn(
-        'fixed inset-0 z-40 bg-background border-r border-border shadow-lg',
+        'fixed inset-0 z-50 bg-background border-r border-border shadow-lg',
         'right-0 sm:right-[32rem]', // Leave space for Sheet (sm:max-w-lg = 32rem)
         'transition-opacity duration-300 ease-in-out',
         transitionState === 'entered' ? 'opacity-100' : 'opacity-0'

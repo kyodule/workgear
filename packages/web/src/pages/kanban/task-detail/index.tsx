@@ -88,17 +88,17 @@ export function TaskDetail({ task, open, onOpenChange, onDeleted }: TaskDetailPr
 
   return (
     <>
-      <MarkdownFullscreenPreview
-        open={!!fullscreenPreview}
-        onOpenChange={(isOpen) => { if (!isOpen) setFullscreenPreview(null) }}
-        title={fullscreenPreview?.title ?? ''}
-        content={fullscreenPreview?.content ?? ''}
-      />
       <Sheet open={open} onOpenChange={(isOpen) => {
         if (!isOpen) setFullscreenPreview(null)
         onOpenChange(isOpen)
       }}>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <MarkdownFullscreenPreview
+          open={!!fullscreenPreview}
+          onOpenChange={(isOpen) => { if (!isOpen) setFullscreenPreview(null) }}
+          title={fullscreenPreview?.title ?? ''}
+          content={fullscreenPreview?.content ?? ''}
+        />
         <SheetHeader>
           {editing ? (
             <div className="space-y-3">
