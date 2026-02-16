@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DraggableResizableDialog } from '@/components/draggable-resizable-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, Brain, Wrench, CheckCircle } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -56,45 +56,49 @@ export function NodeLogDialog({ nodeRun, open, onClose }: NodeLogDialogProps) {
   if (!nodeRun) return null
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[80vh]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            执行日志 - {nodeRun.nodeName || nodeRun.id}
-            {nodeRun.status === 'running' && (
-              <Badge variant="default">
-                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                执行中
-              </Badge>
-            )}
-          </DialogTitle>
-        </DialogHeader>
-
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+    <DraggableResizableDialog
+      open={open}
+      onOpenChange={onClose}
+      defaultWidth={896}
+      defaultHeight={600}
+      minWidth={480}
+      minHeight={320}
+      title={
+        <span className="flex items-center gap-2">
+          执行日志 - {nodeRun.nodeName || nodeRun.id}
+          {nodeRun.status === 'running' && (
+            <Badge variant="default">
+              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+              执行中
+            </Badge>
+          )}
+        </span>
+      }
+    >
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : logs.length === 0 ? (
+        <div className="py-12 text-center text-sm text-muted-foreground">暂无日志</div>
+      ) : (
+        <div
+          ref={scrollRef}
+          className="h-full overflow-y-auto pr-4"
+          onScroll={(e) => {
+            const target = e.currentTarget
+            const isAtBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 50
+            setAutoScroll(isAtBottom)
+          }}
+        >
+          <div className="space-y-2">
+            {logs.map((log, i) => (
+              <LogEntry key={i} event={log} />
+            ))}
           </div>
-        ) : logs.length === 0 ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">暂无日志</div>
-        ) : (
-          <div
-            ref={scrollRef}
-            className="h-[60vh] overflow-y-auto pr-4"
-            onScroll={(e) => {
-              const target = e.currentTarget
-              const isAtBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 50
-              setAutoScroll(isAtBottom)
-            }}
-          >
-            <div className="space-y-2">
-              {logs.map((log, i) => (
-                <LogEntry key={i} event={log} />
-              ))}
-            </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+        </div>
+      )}
+    </DraggableResizableDialog>
   )
 }
 
@@ -126,6 +130,7 @@ function LogEntry({ event }: { event: LogStreamEvent }) {
             <CodeBlock
               code={JSON.stringify(event.tool_input, null, 2)}
               language="json"
+              maxHeight="none"
               className="mt-2"
             />
           )}
@@ -142,6 +147,7 @@ function LogEntry({ event }: { event: LogStreamEvent }) {
           </div>
           <CodeBlock
             code={event.content || ''}
+            maxHeight="none"
             className="mt-1"
           />
         </div>
@@ -165,6 +171,7 @@ function LogEntry({ event }: { event: LogStreamEvent }) {
           <CodeBlock
             code={JSON.stringify(event, null, 2)}
             language="json"
+            maxHeight="none"
             className="mt-1"
           />
         </div>
