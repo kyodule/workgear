@@ -388,12 +388,17 @@ func (c *Client) GetPendingNodeRuns(ctx context.Context, flowRunID string) ([]*N
 	return result, nil
 }
 
-// AllNodesTerminal checks if all node runs for a flow are in terminal state
+// AllNodesTerminal checks if the latest attempt of every node in a flow is in terminal state
 func (c *Client) AllNodesTerminal(ctx context.Context, flowRunID string) (bool, error) {
 	var count int
 	err := c.pool.QueryRow(ctx, `
-		SELECT COUNT(*) FROM node_runs
-		WHERE flow_run_id = $1 AND status NOT IN ('completed', 'failed', 'rejected', 'cancelled')
+		SELECT COUNT(*) FROM (
+			SELECT DISTINCT ON (node_id) status
+			FROM node_runs
+			WHERE flow_run_id = $1
+			ORDER BY node_id, attempt DESC, created_at DESC
+		) latest
+		WHERE status NOT IN ('completed', 'failed', 'rejected', 'cancelled')
 	`, flowRunID).Scan(&count)
 	if err != nil {
 		return false, err
