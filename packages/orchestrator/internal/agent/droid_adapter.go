@@ -52,11 +52,13 @@ func (a *DroidAdapter) BuildRequest(ctx context.Context, req *AgentRequest) (*Ex
 		"NODE_ID":      req.NodeID,
 	}
 
-	// Authentication: BYOK mode via settings.json
+	// Authentication: ACP 模式只需非空 FACTORY_API_KEY 绕过 CLI 登录检查
+	// BYOK 配置通过 settings.json 传递，模型切换通过 ACP session/set_model 完成
 	if a.providerType != "" && a.baseURL != "" && a.apiKey != "" {
 		env["DROID_PROVIDER_TYPE"] = a.providerType
 		env["DROID_BASE_URL"] = a.baseURL
 		env["DROID_API_KEY"] = a.apiKey
+		env["FACTORY_API_KEY"] = "byok-acp"
 
 		// Optional BYOK fields from provider config
 		if modelID, ok := a.config["model_id"].(string); ok && modelID != "" {
@@ -142,11 +144,11 @@ func (a *DroidAdapter) ParseResponse(resp *ExecutorResponse) (*AgentResponse, er
 		return nil, fmt.Errorf("droid execution failed (exit code %d): %s", resp.ExitCode, resp.Stderr)
 	}
 
-	// Droid outputs stream-json; the last "result" event is captured by entrypoint.sh
-	// The format is compatible with Claude CLI stream-json output
-	var claudeOutput ClaudeOutput
-	if err := json.Unmarshal([]byte(resp.Stdout), &claudeOutput); err != nil {
-		// If not valid JSON, wrap the raw output
+	// ACP 模式下 entrypoint.sh 输出统一的 result JSON
+	// 格式: {"type":"result","subtype":"success","result":"...","stop_reason":"end_turn","session_id":"..."}
+	// 或:   {"error":"..."}
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(resp.Stdout), &raw); err != nil {
 		return &AgentResponse{
 			Output: map[string]any{
 				"result":  resp.Stdout,
@@ -157,39 +159,25 @@ func (a *DroidAdapter) ParseResponse(resp *ExecutorResponse) (*AgentResponse, er
 		}, nil
 	}
 
-	// Convert to AgentResponse (reuse ClaudeOutput structure since Droid stream-json is compatible)
 	output := make(map[string]any)
-	if claudeOutput.Result != nil {
-		output = claudeOutput.Result
-	}
-	if claudeOutput.Summary != "" {
-		output["summary"] = claudeOutput.Summary
-	}
-	if len(claudeOutput.ChangedFiles) > 0 {
-		output["changed_files"] = claudeOutput.ChangedFiles
-	}
-	if claudeOutput.Plan != "" {
-		output["plan"] = claudeOutput.Plan
-	}
-	if claudeOutput.Report != "" {
-		output["report"] = claudeOutput.Report
-	}
-	if claudeOutput.Passed != nil {
-		output["passed"] = *claudeOutput.Passed
-	}
-	if len(claudeOutput.Issues) > 0 {
-		output["issues"] = claudeOutput.Issues
-	}
 
-	metrics := &ExecutionMetrics{
-		TokenInput:  claudeOutput.TokensIn,
-		TokenOutput: claudeOutput.TokensOut,
-		DurationMs:  claudeOutput.DurationMs,
+	// Check for error
+	if errMsg, ok := raw["error"].(string); ok && errMsg != "" {
+		output["error"] = errMsg
+		output["summary"] = errMsg
+	} else {
+		// Extract result text from ACP response
+		if result, ok := raw["result"].(string); ok {
+			output["result"] = result
+			output["summary"] = result
+		}
+		if stopReason, ok := raw["stop_reason"].(string); ok {
+			output["stop_reason"] = stopReason
+		}
 	}
 
 	return &AgentResponse{
 		Output:      output,
-		Metrics:     metrics,
 		GitMetadata: resp.GitMetadata,
 	}, nil
 }

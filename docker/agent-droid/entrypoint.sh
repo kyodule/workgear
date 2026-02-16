@@ -52,6 +52,11 @@ if [ -n "$DROID_PROVIDER_TYPE" ] && [ -n "$DROID_BASE_URL" ] && [ -n "$DROID_API
 }
 EOF
     echo "[agent] BYOK settings.json created (provider: ${DROID_PROVIDER_TYPE}, model: ${BYOK_MODEL})"
+    # ACP 模式只需非空 FACTORY_API_KEY 绕过 CLI 登录检查
+    export FACTORY_API_KEY="byok-acp"
+    # 构造 ACP 模型 ID: custom:DisplayName-Index (空格替换为 -)
+    ACP_MODEL_ID="custom:$(echo "$BYOK_DISPLAY_NAME" | tr ' ' '-')-0"
+    echo "[agent] ACP model ID: $ACP_MODEL_ID"
 elif [ -n "$FACTORY_API_KEY" ]; then
     echo "[agent] Factory platform mode: using FACTORY_API_KEY"
 else
@@ -94,78 +99,209 @@ if [ "$AGENT_MODE" = "opsx_plan" ] || [ "$AGENT_MODE" = "opsx_apply" ]; then
     fi
 fi
 
-# ─── Step 2: Run Droid CLI ───
-echo "[agent] Running droid CLI..."
+# ─── Step 2: Run Droid CLI via ACP Protocol ───
+echo "[agent] Running droid CLI via ACP protocol..."
 
-# Build droid command
-DROID_CMD="droid exec"
-DROID_ARGS=""
-
-# Handle test mode
+# Handle test mode defaults
 if [ "$AGENT_MODE" = "test" ]; then
     echo "[agent] Test mode: running simple validation..."
     if [ -z "$AGENT_PROMPT" ] || [ "$AGENT_PROMPT" = "" ]; then
         AGENT_PROMPT="Echo 'Droid agent test successful' and exit immediately"
     fi
-    DROID_ARGS="$DROID_ARGS --auto low"
     # Ensure workspace is a git repo (droid may require it)
     if [ ! -d "$WORKSPACE/.git" ]; then
         cd "$WORKSPACE"
         git init
         git commit --allow-empty -m "init"
     fi
-else
-    # Auto level based on AGENT_MODE
-    case "$AGENT_MODE" in
-        spec)
-            # Read-only analysis, no --auto flag (default read-only)
-            ;;
-        review)
-            DROID_ARGS="$DROID_ARGS --auto low"
-            ;;
-        execute|opsx_plan|opsx_apply)
-            DROID_ARGS="$DROID_ARGS --auto high --skip-permissions-unsafe"
-            ;;
-    esac
 fi
 
-# Add model flag if specified
-if [ -n "$DROID_MODEL" ]; then
-    DROID_ARGS="$DROID_ARGS --model $DROID_MODEL"
-fi
+# Map AGENT_MODE to ACP mode ID
+case "$AGENT_MODE" in
+    spec)       ACP_MODE="normal" ;;
+    review)     ACP_MODE="auto-low" ;;
+    test)       ACP_MODE="auto-low" ;;
+    execute|opsx_plan|opsx_apply)
+                ACP_MODE="auto-high" ;;
+    *)          ACP_MODE="auto-high" ;;
+esac
+echo "[agent] ACP mode: $ACP_MODE"
 
-# Add output format (stream-json for real-time log streaming)
-DROID_ARGS="$DROID_ARGS --output-format stream-json"
+# ─── ACP Communication Setup ───
+# Use two FIFOs for bidirectional communication with droid ACP process
+ACP_IN="/tmp/acp_in"    # entrypoint writes → droid reads
+ACP_OUT="/tmp/acp_out"  # droid writes → entrypoint reads
+rm -f "$ACP_IN" "$ACP_OUT"
+mkfifo "$ACP_IN" "$ACP_OUT"
 
 # Emit pseudo stream-json start event (compatible with executor.go streamLogs parser)
 echo "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"开始执行 Droid Agent（模式: ${AGENT_MODE:-execute}）...\"}]},\"timestamp\":$(date +%s%3N)}" >&2
 
-# Execute droid, pipe stream-json to stderr and extract result
-$DROID_CMD $DROID_ARGS "$AGENT_PROMPT" 2>/tmp/droid_stderr.log | while IFS= read -r line; do
-    # Forward every line to stderr so Docker logs can stream it in real-time
-    echo "$line" >&2
+# Launch droid exec in ACP mode with FIFOs
+droid exec --output-format acp --skip-permissions-unsafe < "$ACP_IN" > "$ACP_OUT" 2>/tmp/droid_stderr.log &
+DROID_PID=$!
 
-    # Parse JSON type field, save the last "result" event
-    TYPE=$(echo "$line" | jq -r '.type // empty' 2>/dev/null)
-    if [ "$TYPE" = "result" ]; then
-        echo "$line" > "$RESULT_FILE"
-    fi
-done
+# Open write end of input FIFO (keep it open so droid doesn't get EOF)
+exec 4>"$ACP_IN"
+# Open read end of output FIFO
+exec 5<"$ACP_OUT"
 
-# Check pipeline exit status
-PIPE_STATUS=${PIPESTATUS[0]}
-if [ "$PIPE_STATUS" != "0" ]; then
-    EXIT_CODE=$PIPE_STATUS
-    echo "[agent] Droid CLI exited with code $EXIT_CODE"
+sleep 1
+
+# Verify droid process started
+if ! kill -0 $DROID_PID 2>/dev/null; then
+    echo "[agent] Failed to start droid ACP process"
     cat /tmp/droid_stderr.log 2>/dev/null
-    # Emit pseudo stream-json error event
-    echo "{\"type\":\"result\",\"subtype\":\"error\",\"timestamp\":$(date +%s%3N)}" >&2
-    echo "{\"error\": \"droid exited with code $EXIT_CODE\", \"stderr\": \"$(cat /tmp/droid_stderr.log 2>/dev/null | head -c 2000 | sed 's/"/\\"/g')\"}" >&3
-    exit $EXIT_CODE
+    echo "{\"error\": \"Failed to start droid ACP process\"}" >&3
+    exit 1
 fi
 
-# Emit pseudo stream-json success event
-echo "{\"type\":\"result\",\"subtype\":\"success\",\"timestamp\":$(date +%s%3N)}" >&2
+ACP_MSG_ID=0
+ACP_RESPONSE_TEXT=""
+ACP_SESSION_ID=""
+
+# Send an ACP message via fd 4
+acp_send() {
+    local method="$1"
+    local params="$2"
+    ACP_MSG_ID=$((ACP_MSG_ID + 1))
+    echo "[agent] ACP >> $method (id=$ACP_MSG_ID)"
+    echo "{\"jsonrpc\":\"2.0\",\"method\":\"$method\",\"params\":$params,\"id\":\"$ACP_MSG_ID\"}" >&4
+}
+
+# Read ACP responses from fd 5 until we get the response for expected_id
+# Collects agent_message_chunk text into ACP_RESPONSE_TEXT
+# Sets ACP_LAST_RESPONSE to the matched response line
+# Returns 0 on success, 1 on timeout, 2 on ACP error
+acp_wait_response() {
+    local expected_id="$1"
+    local timeout_sec="${2:-30}"
+    ACP_LAST_RESPONSE=""
+
+    while IFS= read -r -t "$timeout_sec" line <&5; do
+        [ -z "$line" ] && continue
+        # Forward to stderr for Docker log streaming
+        echo "$line" >&2
+
+        local msg_id=$(echo "$line" | jq -r '.id // empty' 2>/dev/null)
+        local msg_method=$(echo "$line" | jq -r '.method // empty' 2>/dev/null)
+
+        # Handle session/update notifications
+        if [ "$msg_method" = "session/update" ]; then
+            local update_type=$(echo "$line" | jq -r '.params.update.sessionUpdate // empty' 2>/dev/null)
+            if [ "$update_type" = "agent_message_chunk" ]; then
+                local chunk=$(echo "$line" | jq -r '.params.update.content.text // empty' 2>/dev/null)
+                ACP_RESPONSE_TEXT="${ACP_RESPONSE_TEXT}${chunk}"
+            fi
+            continue
+        fi
+
+        # Check if this is the response we're waiting for
+        if [ "$msg_id" = "$expected_id" ]; then
+            ACP_LAST_RESPONSE="$line"
+            local has_error=$(echo "$line" | jq -r 'if .error then "yes" else "" end' 2>/dev/null)
+            if [ "$has_error" = "yes" ]; then
+                local err_msg=$(echo "$line" | jq -r '.error.message // "unknown error"' 2>/dev/null)
+                echo "[agent] ACP error (id=$expected_id): $err_msg"
+                return 2
+            fi
+            return 0
+        fi
+    done
+
+    echo "[agent] ACP timeout waiting for response id=$expected_id"
+    return 1
+}
+
+ACP_FAILED=false
+
+# Step 2a: Initialize
+acp_send "initialize" '{"protocolVersion":1}'
+if ! acp_wait_response "$ACP_MSG_ID" 10; then
+    echo "[agent] ACP initialize failed"
+    ACP_FAILED=true
+fi
+
+# Step 2b: Authenticate
+if [ "$ACP_FAILED" = "false" ]; then
+    acp_send "authenticate" '{"methodId":"factory-api-key"}'
+    if ! acp_wait_response "$ACP_MSG_ID" 10; then
+        echo "[agent] ACP authenticate failed"
+        ACP_FAILED=true
+    fi
+fi
+
+# Step 2c: Create session
+if [ "$ACP_FAILED" = "false" ]; then
+    acp_send "session/new" "{\"cwd\":\"$WORKSPACE\",\"mcpServers\":[]}"
+    if ! acp_wait_response "$ACP_MSG_ID" 15; then
+        echo "[agent] ACP session/new failed"
+        ACP_FAILED=true
+    else
+        ACP_SESSION_ID=$(echo "$ACP_LAST_RESPONSE" | jq -r '.result.sessionId // empty' 2>/dev/null)
+        echo "[agent] ACP session created: $ACP_SESSION_ID"
+    fi
+fi
+
+# Step 2d: Set model (BYOK only)
+if [ "$ACP_FAILED" = "false" ] && [ -n "$ACP_MODEL_ID" ]; then
+    echo "[agent] Setting model to: $ACP_MODEL_ID"
+    acp_send "session/set_model" "{\"sessionId\":\"$ACP_SESSION_ID\",\"modelId\":\"$ACP_MODEL_ID\"}"
+    if ! acp_wait_response "$ACP_MSG_ID" 10; then
+        echo "[agent] ACP session/set_model failed (non-fatal, using default model)"
+    fi
+fi
+
+# Step 2e: Set mode
+if [ "$ACP_FAILED" = "false" ]; then
+    echo "[agent] Setting mode to: $ACP_MODE"
+    acp_send "session/set_mode" "{\"sessionId\":\"$ACP_SESSION_ID\",\"modeId\":\"$ACP_MODE\"}"
+    if ! acp_wait_response "$ACP_MSG_ID" 10; then
+        echo "[agent] ACP session/set_mode failed (non-fatal)"
+    fi
+fi
+
+# Step 2f: Send prompt and collect response
+if [ "$ACP_FAILED" = "false" ]; then
+    ESCAPED_PROMPT=$(echo "$AGENT_PROMPT" | jq -Rs '.')
+    acp_send "session/prompt" "{\"sessionId\":\"$ACP_SESSION_ID\",\"prompt\":[{\"type\":\"text\",\"text\":$ESCAPED_PROMPT}]}"
+
+    PROMPT_TIMEOUT="${DROID_TIMEOUT:-600}"
+    if ! acp_wait_response "$ACP_MSG_ID" "$PROMPT_TIMEOUT"; then
+        echo "[agent] ACP session/prompt failed or timed out"
+        ACP_FAILED=true
+    else
+        STOP_REASON=$(echo "$ACP_LAST_RESPONSE" | jq -r '.result.stopReason // "unknown"' 2>/dev/null)
+        echo "[agent] ACP prompt completed, stopReason: $STOP_REASON"
+    fi
+fi
+
+# Cleanup: close FDs and kill droid process
+exec 4>&- 2>/dev/null
+exec 5<&- 2>/dev/null
+kill $DROID_PID 2>/dev/null
+wait $DROID_PID 2>/dev/null || true
+rm -f "$ACP_IN" "$ACP_OUT"
+
+# Build result
+if [ "$ACP_FAILED" = "true" ]; then
+    echo "{\"type\":\"result\",\"subtype\":\"error\",\"timestamp\":$(date +%s%3N)}" >&2
+    ERROR_MSG=$(echo "$ACP_LAST_RESPONSE" | jq -r '.error.message // "ACP execution failed"' 2>/dev/null)
+    echo "{\"error\": \"$ERROR_MSG\"}" > "$RESULT_FILE"
+else
+    echo "{\"type\":\"result\",\"subtype\":\"success\",\"timestamp\":$(date +%s%3N)}" >&2
+    jq -n \
+        --arg result "$ACP_RESPONSE_TEXT" \
+        --arg stop_reason "${STOP_REASON:-end_turn}" \
+        --arg session_id "$ACP_SESSION_ID" \
+        '{
+            type: "result",
+            subtype: "success",
+            result: $result,
+            stop_reason: $stop_reason,
+            session_id: $session_id
+        }' > "$RESULT_FILE"
+fi
 
 # Verify we got a result
 if [ ! -f "$RESULT_FILE" ] || [ ! -s "$RESULT_FILE" ]; then
