@@ -229,7 +229,7 @@ const templates: TemplateDefinition[] = [
   },
 ]
 
-async function seedTemplates() {
+export async function runTemplatesSeed() {
   console.log('🌱 Seeding workflow templates...')
 
   for (const template of templates) {
@@ -267,11 +267,16 @@ async function seedTemplates() {
   }
 
   console.log('✅ Templates seeded successfully!')
-  await client.end()
 }
 
-seedTemplates().catch(async (error) => {
-  console.error('❌ Failed to seed templates:', error)
-  await client.end()
-  process.exit(1)
-})
+// 独立执行入口
+const isMain = process.argv[1]?.endsWith('seed-templates.ts') || process.argv[1]?.endsWith('seed-templates.js')
+if (isMain) {
+  runTemplatesSeed()
+    .then(() => client.end())
+    .catch(async (error) => {
+      console.error('❌ Failed to seed templates:', error)
+      await client.end()
+      process.exit(1)
+    })
+}

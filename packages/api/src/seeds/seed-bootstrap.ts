@@ -8,7 +8,7 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@workgear.dev'
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'workgear2026'
 const ADMIN_NAME = process.env.ADMIN_NAME || 'Admin'
 
-async function seedBootstrap() {
+export async function runBootstrapSeed() {
   console.log('🚀 Starting bootstrap seed...')
 
   // 1. 创建管理员账号（如果不存在）
@@ -75,10 +75,16 @@ async function seedBootstrap() {
   }
 
   console.log('🎉 Bootstrap seed complete!')
-  await client.end()
 }
 
-seedBootstrap().catch((err) => {
-  console.error('❌ Bootstrap seed failed:', err)
-  process.exit(1)
-})
+// 独立执行入口
+const isMain = process.argv[1]?.endsWith('seed-bootstrap.ts') || process.argv[1]?.endsWith('seed-bootstrap.js')
+if (isMain) {
+  runBootstrapSeed()
+    .then(() => client.end())
+    .catch(async (err) => {
+      console.error('❌ Bootstrap seed failed:', err)
+      await client.end()
+      process.exit(1)
+    })
+}

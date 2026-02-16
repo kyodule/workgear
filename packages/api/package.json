@@ -9,8 +9,10 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx src/seeds/seed-templates.ts",
+    "db:seed": "tsx src/seeds/seed-all.ts",
     "db:seed:bootstrap": "tsx src/seeds/seed-bootstrap.ts",
+    "db:seed:roles": "tsx src/seeds/seed-agent-roles.ts",
+    "db:seed:templates": "tsx src/seeds/seed-templates.ts",
     "clean": "rm -rf dist node_modules"
   },
   "dependencies": {

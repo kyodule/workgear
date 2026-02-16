@@ -67,7 +67,7 @@ const roles = [
   },
 ]
 
-async function seedAgentRoles() {
+export async function runAgentRolesSeed() {
   console.log('🌱 Seeding agent roles...')
 
   for (const role of roles) {
@@ -97,11 +97,16 @@ async function seedAgentRoles() {
   }
 
   console.log('✅ Agent roles seeded successfully!')
-  await client.end()
 }
 
-seedAgentRoles().catch(async (error) => {
-  console.error('❌ Failed to seed agent roles:', error)
-  await client.end()
-  process.exit(1)
-})
+// 独立执行入口
+const isMain = process.argv[1]?.endsWith('seed-agent-roles.ts') || process.argv[1]?.endsWith('seed-agent-roles.js')
+if (isMain) {
+  runAgentRolesSeed()
+    .then(() => client.end())
+    .catch(async (error) => {
+      console.error('❌ Failed to seed agent roles:', error)
+      await client.end()
+      process.exit(1)
+    })
+}
