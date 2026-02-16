@@ -1,35 +1,50 @@
+import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DraggableResizableDialog } from '../draggable-resizable-dialog'
 
 // Mock react-rnd since jsdom doesn't support the layout measurements it needs
+interface RndMockProps {
+  children: React.ReactNode
+  className?: string
+  style?: React.CSSProperties
+  default?: { x: number; y: number; width: number; height: number }
+  minWidth?: number
+  minHeight?: number
+  bounds?: string
+  dragHandleClassName?: string
+}
+
 vi.mock('react-rnd', () => ({
   Rnd: ({
     children,
     className,
     style,
-    default: defaultProps,
-    ...rest
-  }: Record<string, unknown>) => (
+    default: defaultPos,
+    minWidth,
+    minHeight,
+    bounds,
+    dragHandleClassName,
+  }: RndMockProps) => (
     <div
       data-testid="rnd-container"
-      className={className as string}
+      className={className}
       style={{
-        ...(style as Record<string, unknown>),
-        width: (defaultProps as Record<string, unknown>)?.width,
-        height: (defaultProps as Record<string, unknown>)?.height,
+        ...style,
+        width: defaultPos?.width,
+        height: defaultPos?.height,
       }}
-      data-default-x={(defaultProps as Record<string, unknown>)?.x}
-      data-default-y={(defaultProps as Record<string, unknown>)?.y}
-      data-default-width={(defaultProps as Record<string, unknown>)?.width}
-      data-default-height={(defaultProps as Record<string, unknown>)?.height}
-      data-min-width={rest.minWidth as number}
-      data-min-height={rest.minHeight as number}
-      data-bounds={rest.bounds as string}
-      data-drag-handle={rest.dragHandleClassName as string}
+      data-default-x={defaultPos?.x}
+      data-default-y={defaultPos?.y}
+      data-default-width={defaultPos?.width}
+      data-default-height={defaultPos?.height}
+      data-min-width={minWidth}
+      data-min-height={minHeight}
+      data-bounds={bounds}
+      data-drag-handle={dragHandleClassName}
     >
-      {children as React.ReactNode}
+      {children}
     </div>
   ),
 }))
@@ -247,5 +262,49 @@ describe('DraggableResizableDialog', () => {
     // Restore
     Object.defineProperty(window, 'innerWidth', { value: 1024, writable: true })
     Object.defineProperty(window, 'innerHeight', { value: 768, writable: true })
+  })
+
+  // --- Focus management ---
+
+  it('focuses the dialog when opened', async () => {
+    render(<DraggableResizableDialog {...defaultProps} />)
+    // Wait for requestAnimationFrame focus
+    await new Promise((r) => setTimeout(r, 50))
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveFocus()
+  })
+
+  it('restores focus to previously focused element on close', async () => {
+    // Create a button that will be focused before dialog opens
+    const { rerender } = render(
+      <>
+        <button data-testid="trigger-btn">Trigger</button>
+        <DraggableResizableDialog {...defaultProps} open={false} />
+      </>,
+    )
+
+    // Focus the trigger button
+    const triggerBtn = screen.getByTestId('trigger-btn')
+    triggerBtn.focus()
+    expect(triggerBtn).toHaveFocus()
+
+    // Open dialog — should capture previousFocus and move focus to dialog
+    rerender(
+      <>
+        <button data-testid="trigger-btn">Trigger</button>
+        <DraggableResizableDialog {...defaultProps} open={true} />
+      </>,
+    )
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.getByRole('dialog')).toHaveFocus()
+
+    // Close dialog — should restore focus to trigger button
+    rerender(
+      <>
+        <button data-testid="trigger-btn">Trigger</button>
+        <DraggableResizableDialog {...defaultProps} open={false} />
+      </>,
+    )
+    expect(triggerBtn).toHaveFocus()
   })
 })

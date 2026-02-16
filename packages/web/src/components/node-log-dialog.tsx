@@ -130,6 +130,7 @@ function LogEntry({ event }: { event: LogStreamEvent }) {
             <CodeBlock
               code={JSON.stringify(event.tool_input, null, 2)}
               language="json"
+              maxHeight="none"
               className="mt-2"
             />
           )}
@@ -146,6 +147,7 @@ function LogEntry({ event }: { event: LogStreamEvent }) {
           </div>
           <CodeBlock
             code={event.content || ''}
+            maxHeight="none"
             className="mt-1"
           />
         </div>
@@ -169,6 +171,7 @@ function LogEntry({ event }: { event: LogStreamEvent }) {
           <CodeBlock
             code={JSON.stringify(event, null, 2)}
             language="json"
+            maxHeight="none"
             className="mt-1"
           />
         </div>

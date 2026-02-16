@@ -162,7 +162,10 @@ interface DraggableResizableDialogProps {
   defaultHeight?: number
   minWidth?: number
   minHeight?: number
+  /** 内容区域额外 className */
   className?: string
+  /** 外层 Rnd 容器额外 className */
+  containerClassName?: string
   overlay?: boolean
 }
 
@@ -176,6 +179,7 @@ export function DraggableResizableDialog({
   minWidth = 320,
   minHeight = 240,
   className,
+  containerClassName,
   overlay = true,
 }: DraggableResizableDialogProps) {
   // ESC 关闭
@@ -216,7 +220,7 @@ export function DraggableResizableDialog({
         dragHandleClassName="drag-handle"
         className={cn(
           'fixed z-50 flex flex-col rounded-lg border bg-background shadow-lg',
-          className
+          containerClassName
         )}
         style={{ display: 'flex' }}
       >
@@ -231,8 +235,8 @@ export function DraggableResizableDialog({
           </button>
         </div>
 
-        {/* 内容区域 */}
-        <div className="flex-1 overflow-y-auto p-4">
+        {/* 内容区域 — className 应用于此处 */}
+        <div className={cn('flex-1 overflow-y-auto p-4', className)}>
           {children}
         </div>
       </Rnd>
