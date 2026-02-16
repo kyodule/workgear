@@ -5,11 +5,11 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { MarkdownRenderer } from '@/components/markdown-renderer'
 import { ChevronDown, ChevronRight, Pencil, Loader2, Maximize2 } from 'lucide-react'
-import { MarkdownFullscreenDialog } from '@/components/markdown-fullscreen-dialog'
 
 interface ArtifactPreviewCardProps {
   artifact: Artifact
   onEdit?: (artifact: Artifact, latestContent: string, latestVersion: number) => void
+  onFullscreen?: (title: string, content: string) => void
 }
 
 const typeLabels: Record<string, string> = {
@@ -23,12 +23,11 @@ const typeLabels: Record<string, string> = {
   spec: 'Spec',
 }
 
-export function ArtifactPreviewCard({ artifact, onEdit }: ArtifactPreviewCardProps) {
+export function ArtifactPreviewCard({ artifact, onEdit, onFullscreen }: ArtifactPreviewCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [loading, setLoading] = useState(false)
   const [content, setContent] = useState('')
   const [latestVersion, setLatestVersion] = useState<ArtifactVersion | null>(null)
-  const [fullscreenOpen, setFullscreenOpen] = useState(false)
 
   async function toggleExpand() {
     if (expanded) {
@@ -95,10 +94,12 @@ export function ArtifactPreviewCard({ artifact, onEdit }: ArtifactPreviewCardPro
                 <MarkdownRenderer content={content} />
               </div>
               <div className="flex justify-end gap-1.5">
-                <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => setFullscreenOpen(true)}>
-                  <Maximize2 className="mr-1 h-3 w-3" />
-                  全屏
-                </Button>
+                {onFullscreen && (
+                  <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => onFullscreen(artifact.title, content)}>
+                    <Maximize2 className="mr-1 h-3 w-3" />
+                    全屏
+                  </Button>
+                )}
                 {onEdit && latestVersion && (
                   <Button size="sm" variant="outline" className="h-6 text-xs" onClick={handleEdit}>
                     <Pencil className="mr-1 h-3 w-3" />
@@ -106,12 +107,6 @@ export function ArtifactPreviewCard({ artifact, onEdit }: ArtifactPreviewCardPro
                   </Button>
                 )}
               </div>
-              <MarkdownFullscreenDialog
-                open={fullscreenOpen}
-                onOpenChange={setFullscreenOpen}
-                title={artifact.title}
-                content={content}
-              />
             </div>
           ) : (
             <p className="text-xs text-muted-foreground py-1">暂无内容</p>

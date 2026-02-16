@@ -16,6 +16,7 @@ import { FlowErrorDialog } from '@/components/flow-error-dialog'
 interface FlowTabProps {
   taskId: string
   refreshKey?: number
+  onFullscreen?: (title: string, content: string) => void
 }
 
 const statusLabels: Record<string, string> = {
@@ -51,7 +52,7 @@ const statusIcons: Record<string, React.ReactNode> = {
   waiting_human: <Pencil className="h-4 w-4 text-yellow-500" />,
 }
 
-export function FlowTab({ taskId, refreshKey }: FlowTabProps) {
+export function FlowTab({ taskId, refreshKey, onFullscreen }: FlowTabProps) {
   const [flowRuns, setFlowRuns] = useState<FlowRun[]>([])
   const [nodeRuns, setNodeRuns] = useState<NodeRun[]>([])
   const [loading, setLoading] = useState(true)
@@ -192,6 +193,7 @@ export function FlowTab({ taskId, refreshKey }: FlowTabProps) {
                 setEditingContent(content)
                 setEditingVersion(version)
               }}
+              onFullscreen={onFullscreen}
             />
           ))}
         </div>
@@ -226,13 +228,14 @@ export function FlowTab({ taskId, refreshKey }: FlowTabProps) {
 
 // ─── NodeRunItem with inline review panel ───
 
-function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifactRefreshKey, onEditArtifact }: {
+function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifactRefreshKey, onEditArtifact, onFullscreen }: {
   nodeRun: NodeRun
   flowStatus: string
   onActionComplete: () => void
   onViewLogs: () => void
   artifactRefreshKey: number
   onEditArtifact: (artifact: Artifact, content: string, version: number) => void
+  onFullscreen?: (title: string, content: string) => void
 }) {
   const [expanded, setExpanded] = useState(nodeRun.status === 'waiting_human')
   const [feedback, setFeedback] = useState('')
@@ -372,6 +375,7 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
                     key={artifact.id}
                     artifact={artifact}
                     onEdit={(a, content, version) => onEditArtifact(a, content, version)}
+                    onFullscreen={onFullscreen}
                   />
                 ))}
               </div>

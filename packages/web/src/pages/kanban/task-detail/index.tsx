@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { Pencil, Trash2, Play } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Task } from '@/lib/types'
@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { MarkdownFullscreenPreview } from '@/components/markdown-fullscreen-preview'
 import { TimelineTab } from './timeline-tab'
 import { FlowTab } from './flow-tab'
 import { ArtifactsTab } from './artifacts-tab'
@@ -34,6 +35,19 @@ export function TaskDetail({ task, open, onOpenChange, onDeleted }: TaskDetailPr
   const [description, setDescription] = useState('')
   const [startFlowOpen, setStartFlowOpen] = useState(false)
   const [flowRefreshKey, setFlowRefreshKey] = useState(0)
+  const [fullscreenPreview, setFullscreenPreview] = useState<{
+    title: string
+    content: string
+  } | null>(null)
+
+  const handleFullscreen = useCallback((previewTitle: string, previewContent: string) => {
+    // Toggle: if same content is already shown, close it
+    if (fullscreenPreview && fullscreenPreview.title === previewTitle && fullscreenPreview.content === previewContent) {
+      setFullscreenPreview(null)
+    } else {
+      setFullscreenPreview({ title: previewTitle, content: previewContent })
+    }
+  }, [fullscreenPreview])
 
   function startEditing() {
     if (!task) return
@@ -73,7 +87,17 @@ export function TaskDetail({ task, open, onOpenChange, onDeleted }: TaskDetailPr
   if (!task) return null
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <>
+      <MarkdownFullscreenPreview
+        open={!!fullscreenPreview}
+        onOpenChange={(isOpen) => { if (!isOpen) setFullscreenPreview(null) }}
+        title={fullscreenPreview?.title ?? ''}
+        content={fullscreenPreview?.content ?? ''}
+      />
+      <Sheet open={open} onOpenChange={(isOpen) => {
+        if (!isOpen) setFullscreenPreview(null)
+        onOpenChange(isOpen)
+      }}>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader>
           {editing ? (
@@ -128,10 +152,10 @@ export function TaskDetail({ task, open, onOpenChange, onDeleted }: TaskDetailPr
               <TimelineTab taskId={task.id} />
             </TabsContent>
             <TabsContent value="flow">
-              <FlowTab taskId={task.id} refreshKey={flowRefreshKey} />
+              <FlowTab taskId={task.id} refreshKey={flowRefreshKey} onFullscreen={handleFullscreen} />
             </TabsContent>
             <TabsContent value="artifacts">
-              <ArtifactsTab taskId={task.id} />
+              <ArtifactsTab taskId={task.id} onFullscreen={handleFullscreen} />
             </TabsContent>
             <TabsContent value="git">
               <GitTab taskId={task.id} gitBranch={task.gitBranch} />
@@ -148,5 +172,6 @@ export function TaskDetail({ task, open, onOpenChange, onDeleted }: TaskDetailPr
         />
       </SheetContent>
     </Sheet>
+    </>
   )
 }

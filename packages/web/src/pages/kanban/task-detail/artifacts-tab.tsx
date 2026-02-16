@@ -8,6 +8,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 
 interface ArtifactsTabProps {
   taskId: string
+  onFullscreen?: (title: string, content: string) => void
 }
 
 const statusLabels: Record<string, string> = {
@@ -26,7 +27,7 @@ const statusColors: Record<string, 'default' | 'secondary' | 'destructive' | 'ou
   cancelled: 'outline',
 }
 
-export function ArtifactsTab({ taskId }: ArtifactsTabProps) {
+export function ArtifactsTab({ taskId, onFullscreen }: ArtifactsTabProps) {
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [flowRuns, setFlowRuns] = useState<FlowRun[]>([])
   const [nodeRunsMap, setNodeRunsMap] = useState<Map<string, NodeRun[]>>(new Map())
@@ -151,6 +152,7 @@ export function ArtifactsTab({ taskId }: ArtifactsTabProps) {
                   artifacts={flowArtifacts}
                   nodeRuns={nodeRuns}
                   onEdit={handleEditArtifact}
+                  onFullscreen={onFullscreen}
                 />
               </div>
             )}
@@ -170,6 +172,7 @@ export function ArtifactsTab({ taskId }: ArtifactsTabProps) {
                 key={artifact.id}
                 artifact={artifact}
                 onEdit={handleEditArtifact}
+                onFullscreen={onFullscreen}
               />
             ))}
           </div>
@@ -214,10 +217,12 @@ function FlowArtifactsByNode({
   artifacts,
   nodeRuns,
   onEdit,
+  onFullscreen,
 }: {
   artifacts: Artifact[]
   nodeRuns: NodeRun[]
   onEdit: (artifact: Artifact, content: string, version: number) => void
+  onFullscreen?: (title: string, content: string) => void
 }) {
   // Build nodeRun lookup by id
   const nodeRunById = new Map(nodeRuns.map((nr) => [nr.id, nr]))
@@ -266,6 +271,7 @@ function FlowArtifactsByNode({
                   key={artifact.id}
                   artifact={artifact}
                   onEdit={onEdit}
+                  onFullscreen={onFullscreen}
                 />
               ))}
             </div>
@@ -284,6 +290,7 @@ function FlowArtifactsByNode({
                 key={artifact.id}
                 artifact={artifact}
                 onEdit={onEdit}
+                onFullscreen={onFullscreen}
               />
             ))}
           </div>
