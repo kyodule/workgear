@@ -758,11 +758,6 @@ func (e *FlowExecutor) HandleRerun(ctx context.Context, nodeRunID string) error 
 		return fmt.Errorf("can only rerun completed nodes, current status: %s", nodeRun.Status)
 	}
 
-	// Enforce agent_task type at orchestrator level
-	if nodeRun.NodeType == nil || *nodeRun.NodeType != "agent_task" {
-		return fmt.Errorf("can only rerun agent_task nodes, current type: %s", ptrStr(nodeRun.NodeType))
-	}
-
 	// Lock per-flow DAG mutex to prevent concurrent rerun/advance races
 	mu := e.getDAGMutex(nodeRun.FlowRunID)
 	mu.Lock()

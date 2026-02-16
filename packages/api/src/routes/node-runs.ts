@@ -168,10 +168,6 @@ export async function nodeRunRoutes(app: FastifyInstance) {
       return reply.status(422).send({ error: `Can only rerun completed nodes, current status: ${nodeRun.status}` })
     }
 
-    if (nodeRun.nodeType !== 'agent_task') {
-      return reply.status(422).send({ error: `Can only rerun agent_task nodes, current type: ${nodeRun.nodeType}` })
-    }
-
     // Check flow run is not in terminal state
     const [flowRun] = await db
       .select({ status: flowRuns.status })
