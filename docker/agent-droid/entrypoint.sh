@@ -17,20 +17,50 @@ GIT_METADATA_FILE="/output/git_metadata.json"
 FACTORY_CONFIG_DIR="/home/agent/.factory"
 FACTORY_SETTINGS_FILE="$FACTORY_CONFIG_DIR/settings.json"
 
+# ─── Stream-JSON Helpers ───
+# Emit a stream-json event to stderr (executor.go parses these for real-time log streaming)
+# Usage: emit_stream_event <type> <subtype> <text>
+#   type: "system" | "assistant" | "result"
+#   subtype: "init" | "log" | "success" | "error" | "" (empty for assistant messages)
+emit_stream_event() {
+    local etype="$1"
+    local subtype="$2"
+    local text="$3"
+    local ts
+    ts=$(date +%s%3N)
+    # Use jq to safely escape text content
+    local escaped_text
+    escaped_text=$(printf '%s' "$text" | jq -Rs '.')
+    if [ -n "$subtype" ]; then
+        printf '{"type":"%s","subtype":"%s","message":{"content":[{"type":"text","text":%s}]},"timestamp":%s}\n' \
+            "$etype" "$subtype" "$escaped_text" "$ts" >&2
+    else
+        printf '{"type":"%s","message":{"role":"assistant","content":[{"type":"text","text":%s}]},"timestamp":%s}\n' \
+            "$etype" "$escaped_text" "$ts" >&2
+    fi
+}
+
+# Convenience: log an informational message as stream-json system event
+log_info() {
+    local msg="$1"
+    echo "[agent] $msg"
+    emit_stream_event "system" "log" "[agent] $msg"
+}
+
 # Initialize git metadata as empty
 echo '{}' > "$GIT_METADATA_FILE"
 
-echo "[agent] Starting Droid agent..."
-echo "[agent] Mode: ${AGENT_MODE:-execute}"
-echo "[agent] Git repo: ${GIT_REPO_URL:-none}"
-echo "[agent] Git branch: ${GIT_BRANCH:-main}"
+log_info "Starting Droid agent..."
+log_info "Mode: ${AGENT_MODE:-execute}"
+log_info "Git repo: ${GIT_REPO_URL:-none}"
+log_info "Git branch: ${GIT_BRANCH:-main}"
 
 # ─── Step 0: Generate Factory Droid config files ───
-echo "[agent] Generating Droid configuration..."
+log_info "Generating Droid configuration..."
 
 # Generate settings.json for BYOK (custom model) if provider config is set
 if [ -n "$DROID_PROVIDER_TYPE" ] && [ -n "$DROID_BASE_URL" ] && [ -n "$DROID_API_KEY" ]; then
-    echo "[agent] BYOK mode: configuring custom model via settings.json"
+    log_info "BYOK mode: configuring custom model via settings.json"
 
     # Determine model ID
     BYOK_MODEL="${DROID_MODEL:-custom-model}"
@@ -51,19 +81,19 @@ if [ -n "$DROID_PROVIDER_TYPE" ] && [ -n "$DROID_BASE_URL" ] && [ -n "$DROID_API
   ]
 }
 EOF
-    echo "[agent] BYOK settings.json created (provider: ${DROID_PROVIDER_TYPE}, model: ${BYOK_MODEL})"
+    log_info "BYOK settings.json created (provider: ${DROID_PROVIDER_TYPE}, model: ${BYOK_MODEL})"
     # ACP 模式只需非空 FACTORY_API_KEY 绕过 CLI 登录检查
     export FACTORY_API_KEY="byok-acp"
     # 构造 ACP 模型 ID: custom:DisplayName-Index (空格替换为 -)
     ACP_MODEL_ID="custom:$(echo "$BYOK_DISPLAY_NAME" | tr ' ' '-')-0"
-    echo "[agent] ACP model ID: $ACP_MODEL_ID"
+    log_info "ACP model ID: $ACP_MODEL_ID"
 elif [ -n "$FACTORY_API_KEY" ]; then
-    echo "[agent] Factory platform mode: using FACTORY_API_KEY"
+    log_info "Factory platform mode: using FACTORY_API_KEY"
 else
-    echo "[agent] Warning: No FACTORY_API_KEY or BYOK config set"
+    log_info "Warning: No FACTORY_API_KEY or BYOK config set"
 fi
 
-echo "[agent] Configuration files created"
+log_info "Configuration files created"
 
 # ─── Git identity (always configure) ───
 git config --global user.email "agent@workgear.dev"
@@ -71,40 +101,40 @@ git config --global user.name "WorkGear Agent"
 
 # ─── Step 1: Clone repository (if configured) ───
 if [ -n "$GIT_REPO_URL" ]; then
-    echo "[agent] Cloning repository..."
+    log_info "Cloning repository..."
     BRANCH="${GIT_BRANCH:-main}"
 
     # Clone
     git clone "$GIT_REPO_URL" --branch "$BRANCH" --single-branch --depth 50 "$WORKSPACE" 2>&1 || {
-        echo "[agent] Failed to clone branch $BRANCH, trying default branch..."
+        log_info "Failed to clone branch $BRANCH, trying default branch..."
         git clone "$GIT_REPO_URL" --single-branch --depth 50 "$WORKSPACE" 2>&1
         cd "$WORKSPACE"
         git checkout -b "$BRANCH"
     }
     cd "$WORKSPACE"
-    echo "[agent] Repository cloned successfully."
+    log_info "Repository cloned successfully."
 else
-    echo "[agent] No GIT_REPO_URL configured, working in empty workspace."
+    log_info "No GIT_REPO_URL configured, working in empty workspace."
     cd "$WORKSPACE"
 fi
 
 # ─── Step 1.5: Initialize OpenSpec (if needed) ───
 if [ "$AGENT_MODE" = "opsx_plan" ] || [ "$AGENT_MODE" = "opsx_apply" ]; then
-    echo "[agent] OpenSpec mode detected: $AGENT_MODE"
+    log_info "OpenSpec mode detected: $AGENT_MODE"
     if [ ! -d "openspec" ] && [ "$OPSX_INIT_IF_MISSING" = "true" ]; then
-        echo "[agent] Initializing OpenSpec..."
+        log_info "Initializing OpenSpec..."
         openspec init --tools none --force 2>&1 || {
-            echo "[agent] Warning: openspec init failed, continuing anyway..."
+            log_info "Warning: openspec init failed, continuing anyway..."
         }
     fi
 fi
 
 # ─── Step 2: Run Droid CLI via ACP Protocol ───
-echo "[agent] Running droid CLI via ACP protocol..."
+log_info "Running droid CLI via ACP protocol..."
 
 # Handle test mode defaults
 if [ "$AGENT_MODE" = "test" ]; then
-    echo "[agent] Test mode: running simple validation..."
+    log_info "Test mode: running simple validation..."
     if [ -z "$AGENT_PROMPT" ] || [ "$AGENT_PROMPT" = "" ]; then
         AGENT_PROMPT="Echo 'Droid agent test successful' and exit immediately"
     fi
@@ -125,7 +155,7 @@ case "$AGENT_MODE" in
                 ACP_MODE="auto-high" ;;
     *)          ACP_MODE="auto-high" ;;
 esac
-echo "[agent] ACP mode: $ACP_MODE"
+log_info "ACP mode: $ACP_MODE"
 
 # ─── ACP Communication Setup ───
 # Use two FIFOs for bidirectional communication with droid ACP process
@@ -134,8 +164,8 @@ ACP_OUT="/tmp/acp_out"  # droid writes → entrypoint reads
 rm -f "$ACP_IN" "$ACP_OUT"
 mkfifo "$ACP_IN" "$ACP_OUT"
 
-# Emit pseudo stream-json start event (compatible with executor.go streamLogs parser)
-echo "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"开始执行 Droid Agent（模式: ${AGENT_MODE:-execute}）...\"}]},\"timestamp\":$(date +%s%3N)}" >&2
+# Emit stream-json start event (compatible with executor.go streamLogs parser)
+emit_stream_event "assistant" "" "开始执行 Droid Agent（模式: ${AGENT_MODE:-execute}）..."
 
 # Launch droid exec in ACP mode with FIFOs
 droid exec --output-format acp --skip-permissions-unsafe < "$ACP_IN" > "$ACP_OUT" 2>/tmp/droid_stderr.log &
@@ -150,7 +180,7 @@ sleep 1
 
 # Verify droid process started
 if ! kill -0 $DROID_PID 2>/dev/null; then
-    echo "[agent] Failed to start droid ACP process"
+    log_info "Failed to start droid ACP process"
     cat /tmp/droid_stderr.log 2>/dev/null
     echo "{\"error\": \"Failed to start droid ACP process\"}" >&3
     exit 1
@@ -165,7 +195,7 @@ acp_send() {
     local method="$1"
     local params="$2"
     ACP_MSG_ID=$((ACP_MSG_ID + 1))
-    echo "[agent] ACP >> $method (id=$ACP_MSG_ID)"
+    log_info "ACP >> $method (id=$ACP_MSG_ID)"
     echo "{\"jsonrpc\":\"2.0\",\"method\":\"$method\",\"params\":$params,\"id\":\"$ACP_MSG_ID\"}" >&4
 }
 
@@ -180,8 +210,6 @@ acp_wait_response() {
 
     while IFS= read -r -t "$timeout_sec" line <&5; do
         [ -z "$line" ] && continue
-        # Forward to stderr for Docker log streaming
-        echo "$line" >&2
 
         local msg_id=$(echo "$line" | jq -r '.id // empty' 2>/dev/null)
         local msg_method=$(echo "$line" | jq -r '.method // empty' 2>/dev/null)
@@ -192,6 +220,13 @@ acp_wait_response() {
             if [ "$update_type" = "agent_message_chunk" ]; then
                 local chunk=$(echo "$line" | jq -r '.params.update.content.text // empty' 2>/dev/null)
                 ACP_RESPONSE_TEXT="${ACP_RESPONSE_TEXT}${chunk}"
+                # Emit as stream-json assistant event for real-time log streaming
+                emit_stream_event "assistant" "" "$chunk"
+            elif [ "$update_type" = "tool_call" ]; then
+                local tool_name=$(echo "$line" | jq -r '.params.update.toolName // empty' 2>/dev/null)
+                if [ -n "$tool_name" ]; then
+                    emit_stream_event "system" "log" "Tool call: $tool_name"
+                fi
             fi
             continue
         fi
@@ -202,14 +237,14 @@ acp_wait_response() {
             local has_error=$(echo "$line" | jq -r 'if .error then "yes" else "" end' 2>/dev/null)
             if [ "$has_error" = "yes" ]; then
                 local err_msg=$(echo "$line" | jq -r '.error.message // "unknown error"' 2>/dev/null)
-                echo "[agent] ACP error (id=$expected_id): $err_msg"
+                log_info "ACP error (id=$expected_id): $err_msg"
                 return 2
             fi
             return 0
         fi
     done
 
-    echo "[agent] ACP timeout waiting for response id=$expected_id"
+    log_info "ACP timeout waiting for response id=$expected_id"
     return 1
 }
 
@@ -218,7 +253,7 @@ ACP_FAILED=false
 # Step 2a: Initialize
 acp_send "initialize" '{"protocolVersion":1}'
 if ! acp_wait_response "$ACP_MSG_ID" 10; then
-    echo "[agent] ACP initialize failed"
+    log_info "ACP initialize failed"
     ACP_FAILED=true
 fi
 
@@ -226,7 +261,7 @@ fi
 if [ "$ACP_FAILED" = "false" ]; then
     acp_send "authenticate" '{"methodId":"factory-api-key"}'
     if ! acp_wait_response "$ACP_MSG_ID" 10; then
-        echo "[agent] ACP authenticate failed"
+        log_info "ACP authenticate failed"
         ACP_FAILED=true
     fi
 fi
@@ -235,29 +270,29 @@ fi
 if [ "$ACP_FAILED" = "false" ]; then
     acp_send "session/new" "{\"cwd\":\"$WORKSPACE\",\"mcpServers\":[]}"
     if ! acp_wait_response "$ACP_MSG_ID" 15; then
-        echo "[agent] ACP session/new failed"
+        log_info "ACP session/new failed"
         ACP_FAILED=true
     else
         ACP_SESSION_ID=$(echo "$ACP_LAST_RESPONSE" | jq -r '.result.sessionId // empty' 2>/dev/null)
-        echo "[agent] ACP session created: $ACP_SESSION_ID"
+        log_info "ACP session created: $ACP_SESSION_ID"
     fi
 fi
 
 # Step 2d: Set model (BYOK only)
 if [ "$ACP_FAILED" = "false" ] && [ -n "$ACP_MODEL_ID" ]; then
-    echo "[agent] Setting model to: $ACP_MODEL_ID"
+    log_info "Setting model to: $ACP_MODEL_ID"
     acp_send "session/set_model" "{\"sessionId\":\"$ACP_SESSION_ID\",\"modelId\":\"$ACP_MODEL_ID\"}"
     if ! acp_wait_response "$ACP_MSG_ID" 10; then
-        echo "[agent] ACP session/set_model failed (non-fatal, using default model)"
+        log_info "ACP session/set_model failed (non-fatal, using default model)"
     fi
 fi
 
 # Step 2e: Set mode
 if [ "$ACP_FAILED" = "false" ]; then
-    echo "[agent] Setting mode to: $ACP_MODE"
+    log_info "Setting mode to: $ACP_MODE"
     acp_send "session/set_mode" "{\"sessionId\":\"$ACP_SESSION_ID\",\"modeId\":\"$ACP_MODE\"}"
     if ! acp_wait_response "$ACP_MSG_ID" 10; then
-        echo "[agent] ACP session/set_mode failed (non-fatal)"
+        log_info "ACP session/set_mode failed (non-fatal)"
     fi
 fi
 
@@ -268,11 +303,11 @@ if [ "$ACP_FAILED" = "false" ]; then
 
     PROMPT_TIMEOUT="${DROID_TIMEOUT:-600}"
     if ! acp_wait_response "$ACP_MSG_ID" "$PROMPT_TIMEOUT"; then
-        echo "[agent] ACP session/prompt failed or timed out"
+        log_info "ACP session/prompt failed or timed out"
         ACP_FAILED=true
     else
         STOP_REASON=$(echo "$ACP_LAST_RESPONSE" | jq -r '.result.stopReason // "unknown"' 2>/dev/null)
-        echo "[agent] ACP prompt completed, stopReason: $STOP_REASON"
+        log_info "ACP prompt completed, stopReason: $STOP_REASON"
     fi
 fi
 
@@ -285,11 +320,11 @@ rm -f "$ACP_IN" "$ACP_OUT"
 
 # Build result
 if [ "$ACP_FAILED" = "true" ]; then
-    echo "{\"type\":\"result\",\"subtype\":\"error\",\"timestamp\":$(date +%s%3N)}" >&2
+    emit_stream_event "result" "error" "ACP execution failed"
     ERROR_MSG=$(echo "$ACP_LAST_RESPONSE" | jq -r '.error.message // "ACP execution failed"' 2>/dev/null)
     echo "{\"error\": \"$ERROR_MSG\"}" > "$RESULT_FILE"
 else
-    echo "{\"type\":\"result\",\"subtype\":\"success\",\"timestamp\":$(date +%s%3N)}" >&2
+    emit_stream_event "result" "success" "Droid execution completed"
     jq -n \
         --arg result "$ACP_RESPONSE_TEXT" \
         --arg stop_reason "${STOP_REASON:-end_turn}" \
@@ -305,11 +340,11 @@ fi
 
 # Verify we got a result
 if [ ! -f "$RESULT_FILE" ] || [ ! -s "$RESULT_FILE" ]; then
-    echo "[agent] Warning: No result file or empty result from Droid CLI"
+    log_info "Warning: No result file or empty result from Droid CLI"
     echo '{"error": "No result", "summary": "Agent execution completed but no result was produced."}' > "$RESULT_FILE"
 fi
 
-echo "[agent] Droid CLI completed successfully."
+log_info "Droid CLI completed successfully."
 
 # ─── Helper: Create GitHub PR ───
 create_github_pr() {
@@ -318,7 +353,7 @@ create_github_pr() {
     local PR_TITLE="$3"
     local PR_BODY="$4"
 
-    echo "[agent] Creating GitHub PR: $FEATURE_BRANCH -> $BASE_BRANCH"
+    log_info "Creating GitHub PR: $FEATURE_BRANCH -> $BASE_BRANCH"
 
     # Extract owner/repo from GIT_REPO_URL
     local REPO_PATH=$(echo "$GIT_REPO_URL" | sed -E 's|^https?://([^@]*@)?github\.com[/:]||' | sed 's|\.git$||')
@@ -326,7 +361,7 @@ create_github_pr() {
     local REPO=$(echo "$REPO_PATH" | cut -d'/' -f2)
 
     if [ -z "$OWNER" ] || [ -z "$REPO" ]; then
-        echo "[agent] Warning: Could not parse owner/repo from $GIT_REPO_URL, skipping PR creation"
+        log_info "Warning: Could not parse owner/repo from $GIT_REPO_URL, skipping PR creation"
         return 0
     fi
 
@@ -339,7 +374,7 @@ create_github_pr() {
     fi
 
     if [ -z "$TOKEN" ]; then
-        echo "[agent] Warning: No access token found, skipping PR creation"
+        log_info "Warning: No access token found, skipping PR creation"
         return 0
     fi
 
@@ -358,11 +393,11 @@ create_github_pr() {
     if [ "$HTTP_CODE" = "201" ]; then
         local PR_URL=$(echo "$BODY" | jq -r '.html_url')
         local PR_NUMBER=$(echo "$BODY" | jq -r '.number')
-        echo "[agent] PR created successfully: $PR_URL (#$PR_NUMBER)"
+        log_info "PR created successfully: $PR_URL (#$PR_NUMBER)"
         echo "$PR_URL" > /output/pr_url.txt
         echo "$PR_NUMBER" > /output/pr_number.txt
     elif [ "$HTTP_CODE" = "422" ]; then
-        echo "[agent] PR already exists (422), looking up existing PR..."
+        log_info "PR already exists (422), looking up existing PR..."
         local SEARCH_URL="https://api.github.com/repos/$OWNER/$REPO/pulls?head=$OWNER:$FEATURE_BRANCH&base=$BASE_BRANCH&state=open"
         local SEARCH_RESP=$(curl -s "$SEARCH_URL" \
             -H "Authorization: Bearer $TOKEN" \
@@ -371,13 +406,13 @@ create_github_pr() {
         local EXISTING_PR_URL=$(echo "$SEARCH_RESP" | jq -r '.[0].html_url // empty')
         local EXISTING_PR_NUMBER=$(echo "$SEARCH_RESP" | jq -r '.[0].number // empty')
         if [ -n "$EXISTING_PR_URL" ]; then
-            echo "[agent] Found existing PR: $EXISTING_PR_URL (#$EXISTING_PR_NUMBER)"
+            log_info "Found existing PR: $EXISTING_PR_URL (#$EXISTING_PR_NUMBER)"
             echo "$EXISTING_PR_URL" > /output/pr_url.txt
             echo "$EXISTING_PR_NUMBER" > /output/pr_number.txt
         fi
     else
-        echo "[agent] Warning: Failed to create PR (HTTP $HTTP_CODE), but branch was pushed successfully"
-        echo "[agent] Response: $BODY"
+        log_info "Warning: Failed to create PR (HTTP $HTTP_CODE), but branch was pushed successfully"
+        log_info "Response: $BODY"
     fi
 }
 
@@ -388,11 +423,11 @@ if [ "$AGENT_MODE" = "execute" ] || [ "$AGENT_MODE" = "opsx_plan" ] || [ "$AGENT
 fi
 
 if [ "$SHOULD_PUSH" = "true" ] && [ -n "$GIT_REPO_URL" ]; then
-    echo "[agent] Checking for file changes..."
+    log_info "Checking for file changes..."
     cd "$WORKSPACE"
 
     if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
-        echo "[agent] Committing changes..."
+        log_info "Committing changes..."
 
         # Determine branches
         FEATURE_BRANCH="${GIT_FEATURE_BRANCH:-${GIT_BRANCH:-main}}"
@@ -429,9 +464,9 @@ if [ "$SHOULD_PUSH" = "true" ] && [ -n "$GIT_REPO_URL" ]; then
         git commit -m "$COMMIT_MSG" 2>&1
 
         # Push to feature branch
-        echo "[agent] Pushing to $FEATURE_BRANCH..."
+        log_info "Pushing to $FEATURE_BRANCH..."
         git push origin "$FEATURE_BRANCH" --force 2>&1
-        echo "[agent] Changes pushed successfully to $FEATURE_BRANCH"
+        log_info "Changes pushed successfully to $FEATURE_BRANCH"
 
         # Create PR if requested
         if [ "$GIT_CREATE_PR" = "true" ]; then
@@ -499,9 +534,9 @@ if [ "$SHOULD_PUSH" = "true" ] && [ -n "$GIT_REPO_URL" ]; then
                 changed_files_detail: $changed_files_detail
             }' > "$GIT_METADATA_FILE"
 
-        echo "[agent] Git metadata written to $GIT_METADATA_FILE"
+        log_info "Git metadata written to $GIT_METADATA_FILE"
     else
-        echo "[agent] No file changes detected."
+        log_info "No file changes detected."
     fi
 fi
 
@@ -512,4 +547,4 @@ else
     echo '{"result": "completed", "summary": "Agent execution completed but no output file generated."}' >&3
 fi
 
-echo "[agent] Done."
+log_info "Done."
