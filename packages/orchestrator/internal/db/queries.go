@@ -121,15 +121,29 @@ func indexOf(s string, c byte) int {
 // UpdateFlowRunStatus updates the status of a flow run
 func (c *Client) UpdateFlowRunStatus(ctx context.Context, id, status string) error {
 	var completedAt *time.Time
+	clearCompletedAt := false
 	if status == StatusCompleted || status == StatusFailed || status == StatusCancelled {
 		now := time.Now()
 		completedAt = &now
+	} else if status == StatusRunning {
+		clearCompletedAt = true
 	}
 
 	var startedAt *time.Time
 	if status == StatusRunning {
 		now := time.Now()
 		startedAt = &now
+	}
+
+	if clearCompletedAt {
+		_, err := c.pool.Exec(ctx, `
+			UPDATE flow_runs
+			SET status = $2,
+			    started_at = COALESCE($3, started_at),
+			    completed_at = NULL
+			WHERE id = $1
+		`, id, status, startedAt)
+		return err
 	}
 
 	_, err := c.pool.Exec(ctx, `

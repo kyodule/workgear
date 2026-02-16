@@ -26,6 +26,7 @@ const (
 	OrchestratorService_EditNode_FullMethodName          = "/orchestrator.OrchestratorService/EditNode"
 	OrchestratorService_SubmitHumanInput_FullMethodName  = "/orchestrator.OrchestratorService/SubmitHumanInput"
 	OrchestratorService_RetryNode_FullMethodName         = "/orchestrator.OrchestratorService/RetryNode"
+	OrchestratorService_RerunNode_FullMethodName         = "/orchestrator.OrchestratorService/RerunNode"
 	OrchestratorService_TestAgent_FullMethodName         = "/orchestrator.OrchestratorService/TestAgent"
 	OrchestratorService_ReloadAgentConfig_FullMethodName = "/orchestrator.OrchestratorService/ReloadAgentConfig"
 	OrchestratorService_EventStream_FullMethodName       = "/orchestrator.OrchestratorService/EventStream"
@@ -44,6 +45,7 @@ type OrchestratorServiceClient interface {
 	EditNode(ctx context.Context, in *EditNodeRequest, opts ...grpc.CallOption) (*NodeActionResponse, error)
 	SubmitHumanInput(ctx context.Context, in *SubmitHumanInputRequest, opts ...grpc.CallOption) (*NodeActionResponse, error)
 	RetryNode(ctx context.Context, in *RetryNodeRequest, opts ...grpc.CallOption) (*NodeActionResponse, error)
+	RerunNode(ctx context.Context, in *RetryNodeRequest, opts ...grpc.CallOption) (*NodeActionResponse, error)
 	// Agent 测试
 	TestAgent(ctx context.Context, in *TestAgentRequest, opts ...grpc.CallOption) (*TestAgentResponse, error)
 	// Agent 配置热重载
@@ -130,6 +132,16 @@ func (c *orchestratorServiceClient) RetryNode(ctx context.Context, in *RetryNode
 	return out, nil
 }
 
+func (c *orchestratorServiceClient) RerunNode(ctx context.Context, in *RetryNodeRequest, opts ...grpc.CallOption) (*NodeActionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NodeActionResponse)
+	err := c.cc.Invoke(ctx, OrchestratorService_RerunNode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *orchestratorServiceClient) TestAgent(ctx context.Context, in *TestAgentRequest, opts ...grpc.CallOption) (*TestAgentResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(TestAgentResponse)
@@ -182,6 +194,7 @@ type OrchestratorServiceServer interface {
 	EditNode(context.Context, *EditNodeRequest) (*NodeActionResponse, error)
 	SubmitHumanInput(context.Context, *SubmitHumanInputRequest) (*NodeActionResponse, error)
 	RetryNode(context.Context, *RetryNodeRequest) (*NodeActionResponse, error)
+	RerunNode(context.Context, *RetryNodeRequest) (*NodeActionResponse, error)
 	// Agent 测试
 	TestAgent(context.Context, *TestAgentRequest) (*TestAgentResponse, error)
 	// Agent 配置热重载
@@ -218,6 +231,9 @@ func (UnimplementedOrchestratorServiceServer) SubmitHumanInput(context.Context, 
 }
 func (UnimplementedOrchestratorServiceServer) RetryNode(context.Context, *RetryNodeRequest) (*NodeActionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RetryNode not implemented")
+}
+func (UnimplementedOrchestratorServiceServer) RerunNode(context.Context, *RetryNodeRequest) (*NodeActionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RerunNode not implemented")
 }
 func (UnimplementedOrchestratorServiceServer) TestAgent(context.Context, *TestAgentRequest) (*TestAgentResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TestAgent not implemented")
@@ -375,6 +391,24 @@ func _OrchestratorService_RetryNode_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OrchestratorService_RerunNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RetryNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrchestratorServiceServer).RerunNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrchestratorService_RerunNode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrchestratorServiceServer).RerunNode(ctx, req.(*RetryNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _OrchestratorService_TestAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(TestAgentRequest)
 	if err := dec(in); err != nil {
@@ -456,6 +490,10 @@ var OrchestratorService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RetryNode",
 			Handler:    _OrchestratorService_RetryNode_Handler,
+		},
+		{
+			MethodName: "RerunNode",
+			Handler:    _OrchestratorService_RerunNode_Handler,
 		},
 		{
 			MethodName: "TestAgent",

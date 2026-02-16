@@ -130,6 +130,17 @@ func (s *OrchestratorServer) RetryNode(ctx context.Context, req *pb.RetryNodeReq
 	return &pb.NodeActionResponse{Success: true}, nil
 }
 
+func (s *OrchestratorServer) RerunNode(ctx context.Context, req *pb.RetryNodeRequest) (*pb.NodeActionResponse, error) {
+	s.logger.Infow("RerunNode called", "node_run_id", req.NodeRunId)
+
+	if err := s.executor.HandleRerun(ctx, req.NodeRunId); err != nil {
+		s.logger.Errorw("RerunNode failed", "error", err)
+		return &pb.NodeActionResponse{Success: false, Error: err.Error()}, nil
+	}
+
+	return &pb.NodeActionResponse{Success: true}, nil
+}
+
 // ─── Event Stream ───
 
 func (s *OrchestratorServer) EventStream(req *pb.EventStreamRequest, stream pb.OrchestratorService_EventStreamServer) error {

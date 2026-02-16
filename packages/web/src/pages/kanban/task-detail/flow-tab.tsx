@@ -293,6 +293,19 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
     }
   }
 
+  async function handleRerun() {
+    if (!confirm('确定要重跑此节点？后续节点将被重置。')) return
+    setSubmitting(true)
+    try {
+      await api.post(`node-runs/${nodeRun.id}/rerun`)
+      onActionComplete()
+    } catch (error: any) {
+      alert(`重跑失败: ${error.message}`)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const displayName = nodeRun.nodeName || nodeRun.nodeId
   const isClickable = nodeRun.status === 'waiting_human' || nodeRun.status === 'completed' || nodeRun.status === 'failed'
 
@@ -433,6 +446,14 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
                 重试
               </Button>
             </div>
+          )}
+
+          {/* Rerun for completed agent_task nodes */}
+          {nodeRun.status === 'completed' && nodeRun.nodeType === 'agent_task' && flowStatus !== 'cancelled' && (
+            <Button size="sm" variant="outline" onClick={handleRerun} disabled={submitting}>
+              <RotateCcw className="mr-1 h-3 w-3" />
+              重跑
+            </Button>
           )}
 
           {/* Review info for reviewed nodes */}

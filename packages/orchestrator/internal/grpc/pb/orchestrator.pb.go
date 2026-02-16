@@ -1021,7 +1021,7 @@ const file_orchestrator_proto_rawDesc = "" +
 	"\vnode_run_id\x18\x03 \x01(\tR\tnodeRunId\x12\x17\n" +
 	"\anode_id\x18\x04 \x01(\tR\x06nodeId\x12\x1b\n" +
 	"\tdata_json\x18\x05 \x01(\tR\bdataJson\x12\x1c\n" +
-	"\ttimestamp\x18\x06 \x01(\x03R\ttimestamp2\xd3\x06\n" +
+	"\ttimestamp\x18\x06 \x01(\x03R\ttimestamp2\xa2\a\n" +
 	"\x13OrchestratorService\x12L\n" +
 	"\tStartFlow\x12\x1e.orchestrator.StartFlowRequest\x1a\x1f.orchestrator.StartFlowResponse\x12O\n" +
 	"\n" +
@@ -1031,7 +1031,8 @@ const file_orchestrator_proto_rawDesc = "" +
 	"RejectNode\x12\x1f.orchestrator.RejectNodeRequest\x1a .orchestrator.NodeActionResponse\x12K\n" +
 	"\bEditNode\x12\x1d.orchestrator.EditNodeRequest\x1a .orchestrator.NodeActionResponse\x12[\n" +
 	"\x10SubmitHumanInput\x12%.orchestrator.SubmitHumanInputRequest\x1a .orchestrator.NodeActionResponse\x12M\n" +
-	"\tRetryNode\x12\x1e.orchestrator.RetryNodeRequest\x1a .orchestrator.NodeActionResponse\x12L\n" +
+	"\tRetryNode\x12\x1e.orchestrator.RetryNodeRequest\x1a .orchestrator.NodeActionResponse\x12M\n" +
+	"\tRerunNode\x12\x1e.orchestrator.RetryNodeRequest\x1a .orchestrator.NodeActionResponse\x12L\n" +
 	"\tTestAgent\x12\x1e.orchestrator.TestAgentRequest\x1a\x1f.orchestrator.TestAgentResponse\x12d\n" +
 	"\x11ReloadAgentConfig\x12&.orchestrator.ReloadAgentConfigRequest\x1a'.orchestrator.ReloadAgentConfigResponse\x12L\n" +
 	"\vEventStream\x12 .orchestrator.EventStreamRequest\x1a\x19.orchestrator.ServerEvent0\x01B;Z9github.com/sunshow/workgear/orchestrator/internal/grpc/pbb\x06proto3"
@@ -1079,21 +1080,23 @@ var file_orchestrator_proto_depIdxs = []int32{
 	6,  // 6: orchestrator.OrchestratorService.EditNode:input_type -> orchestrator.EditNodeRequest
 	7,  // 7: orchestrator.OrchestratorService.SubmitHumanInput:input_type -> orchestrator.SubmitHumanInputRequest
 	8,  // 8: orchestrator.OrchestratorService.RetryNode:input_type -> orchestrator.RetryNodeRequest
-	10, // 9: orchestrator.OrchestratorService.TestAgent:input_type -> orchestrator.TestAgentRequest
-	12, // 10: orchestrator.OrchestratorService.ReloadAgentConfig:input_type -> orchestrator.ReloadAgentConfigRequest
-	14, // 11: orchestrator.OrchestratorService.EventStream:input_type -> orchestrator.EventStreamRequest
-	1,  // 12: orchestrator.OrchestratorService.StartFlow:output_type -> orchestrator.StartFlowResponse
-	3,  // 13: orchestrator.OrchestratorService.CancelFlow:output_type -> orchestrator.CancelFlowResponse
-	9,  // 14: orchestrator.OrchestratorService.ApproveNode:output_type -> orchestrator.NodeActionResponse
-	9,  // 15: orchestrator.OrchestratorService.RejectNode:output_type -> orchestrator.NodeActionResponse
-	9,  // 16: orchestrator.OrchestratorService.EditNode:output_type -> orchestrator.NodeActionResponse
-	9,  // 17: orchestrator.OrchestratorService.SubmitHumanInput:output_type -> orchestrator.NodeActionResponse
-	9,  // 18: orchestrator.OrchestratorService.RetryNode:output_type -> orchestrator.NodeActionResponse
-	11, // 19: orchestrator.OrchestratorService.TestAgent:output_type -> orchestrator.TestAgentResponse
-	13, // 20: orchestrator.OrchestratorService.ReloadAgentConfig:output_type -> orchestrator.ReloadAgentConfigResponse
-	15, // 21: orchestrator.OrchestratorService.EventStream:output_type -> orchestrator.ServerEvent
-	12, // [12:22] is the sub-list for method output_type
-	2,  // [2:12] is the sub-list for method input_type
+	8,  // 9: orchestrator.OrchestratorService.RerunNode:input_type -> orchestrator.RetryNodeRequest
+	10, // 10: orchestrator.OrchestratorService.TestAgent:input_type -> orchestrator.TestAgentRequest
+	12, // 11: orchestrator.OrchestratorService.ReloadAgentConfig:input_type -> orchestrator.ReloadAgentConfigRequest
+	14, // 12: orchestrator.OrchestratorService.EventStream:input_type -> orchestrator.EventStreamRequest
+	1,  // 13: orchestrator.OrchestratorService.StartFlow:output_type -> orchestrator.StartFlowResponse
+	3,  // 14: orchestrator.OrchestratorService.CancelFlow:output_type -> orchestrator.CancelFlowResponse
+	9,  // 15: orchestrator.OrchestratorService.ApproveNode:output_type -> orchestrator.NodeActionResponse
+	9,  // 16: orchestrator.OrchestratorService.RejectNode:output_type -> orchestrator.NodeActionResponse
+	9,  // 17: orchestrator.OrchestratorService.EditNode:output_type -> orchestrator.NodeActionResponse
+	9,  // 18: orchestrator.OrchestratorService.SubmitHumanInput:output_type -> orchestrator.NodeActionResponse
+	9,  // 19: orchestrator.OrchestratorService.RetryNode:output_type -> orchestrator.NodeActionResponse
+	9,  // 20: orchestrator.OrchestratorService.RerunNode:output_type -> orchestrator.NodeActionResponse
+	11, // 21: orchestrator.OrchestratorService.TestAgent:output_type -> orchestrator.TestAgentResponse
+	13, // 22: orchestrator.OrchestratorService.ReloadAgentConfig:output_type -> orchestrator.ReloadAgentConfigResponse
+	15, // 23: orchestrator.OrchestratorService.EventStream:output_type -> orchestrator.ServerEvent
+	13, // [13:24] is the sub-list for method output_type
+	2,  // [2:13] is the sub-list for method input_type
 	2,  // [2:2] is the sub-list for extension type_name
 	2,  // [2:2] is the sub-list for extension extendee
 	0,  // [0:2] is the sub-list for field type_name

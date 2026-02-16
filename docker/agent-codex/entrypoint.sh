@@ -126,7 +126,7 @@ else
         spec)
             CODEX_ARGS="$CODEX_ARGS --sandbox read-only --skip-git-repo-check"
             ;;
-        execute|opsx_plan|opsx_apply)
+        execute|opsx_plan|opsx_apply|review)
             CODEX_ARGS="$CODEX_ARGS --sandbox workspace-write --full-auto"
             ;;
     esac
@@ -137,6 +137,9 @@ if [ -n "$CODEX_SANDBOX" ]; then
     CODEX_ARGS="$CODEX_ARGS --sandbox $CODEX_SANDBOX"
 fi
 
+# Emit pseudo stream-json start event (compatible with executor.go streamLogs parser)
+echo "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"开始执行 Codex Agent（模式: ${AGENT_MODE:-execute}）...\"}]},\"timestamp\":$(date +%s%3N)}" >&2
+
 # Execute codex, tee stderr to both file and console for visibility
 $CODEX_CMD $CODEX_ARGS "$AGENT_PROMPT" > "$RESULT_FILE" 2> >(tee /tmp/codex_stderr.log >&2)
 
@@ -146,9 +149,14 @@ if [ "$CODEX_EXIT" != "0" ]; then
     echo "[agent] Codex CLI exited with code $CODEX_EXIT"
     echo "[agent] Codex stderr:"
     cat /tmp/codex_stderr.log 2>/dev/null
+    # Emit pseudo stream-json error event
+    echo "{\"type\":\"result\",\"subtype\":\"error\",\"timestamp\":$(date +%s%3N)}" >&2
     echo "{\"error\": \"codex exited with code $CODEX_EXIT\", \"stderr\": \"$(cat /tmp/codex_stderr.log 2>/dev/null | head -c 2000 | sed 's/"/\\"/g')\"}" >&3
     exit $CODEX_EXIT
 fi
+
+# Emit pseudo stream-json success event
+echo "{\"type\":\"result\",\"subtype\":\"success\",\"timestamp\":$(date +%s%3N)}" >&2
 
 # Verify we got a result
 if [ ! -f "$RESULT_FILE" ] || [ ! -s "$RESULT_FILE" ]; then

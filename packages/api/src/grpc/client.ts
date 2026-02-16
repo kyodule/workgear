@@ -89,6 +89,15 @@ export function retryNode(nodeRunId: string): Promise<{ success: boolean; error?
   })
 }
 
+export function rerunNode(nodeRunId: string): Promise<{ success: boolean; error?: string }> {
+  return new Promise((resolve, reject) => {
+    client.RerunNode({ nodeRunId }, (err: any, response: any) => {
+      if (err) return reject(err)
+      resolve(response)
+    })
+  })
+}
+
 // ─── Agent Test ───
 
 export interface TestAgentParams {

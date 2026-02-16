@@ -151,10 +151,18 @@ func modeInstruction(mode string) string {
 确保代码可编译、可运行。`
 	case "review":
 		return `当前模式：审查（review）
-请审查代码变更，输出结构化的审查报告，包括：
+你正在一个已 clone 的 Git 仓库中（/workspace），拥有完整的文件系统访问权限。
+请使用以下工具审查代码变更：
+- Read 工具：读取文件内容
+- Execute 工具：运行 git diff、git show 等命令查看变更
+- Glob 工具：查找相关文件
+
+请输出结构化的审查报告，包括：
 - 是否通过（passed: true/false）
-- 发现的问题列表
-- 改进建议`
+- 发现的问题列表（issues: [{severity, description, file, line}]）
+- 改进建议（suggestions: [...]）
+
+重要：请基于实际代码内容进行审查，而非仅依赖上游节点的摘要。`
 	case "opsx_plan":
 		return `当前模式：OpenSpec 规划（opsx_plan）
 你正在使用 OpenSpec 工作流。请按以下步骤操作：

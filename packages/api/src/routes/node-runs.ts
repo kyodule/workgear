@@ -143,13 +143,48 @@ export async function nodeRunRoutes(app: FastifyInstance) {
       const result = await orchestrator.retryNode(id)
 
       if (!result.success) {
-        return reply.status(500).send({ error: result.error || 'Orchestrator error' })
+        const err = result.error || 'Orchestrator error'
+        const isBusinessError = /^(can only|cannot|flow has been|not found)/.test(err)
+        return reply.status(isBusinessError ? 409 : 500).send({ error: err })
       }
 
       return { success: true }
     } catch (error: any) {
       app.log.error(error)
       return reply.status(500).send({ error: error.message || 'Failed to retry node' })
+    }
+  })
+
+  // Rerun a completed agent_task node (re-execute and reset successors)
+  app.post<{ Params: { id: string } }>('/:id/rerun', async (request, reply) => {
+    const { id } = request.params
+
+    const [nodeRun] = await db.select().from(nodeRuns).where(eq(nodeRuns.id, id))
+    if (!nodeRun) {
+      return reply.status(404).send({ error: 'NodeRun not found' })
+    }
+
+    if (nodeRun.status !== 'completed') {
+      return reply.status(422).send({ error: `Can only rerun completed nodes, current status: ${nodeRun.status}` })
+    }
+
+    if (nodeRun.nodeType !== 'agent_task') {
+      return reply.status(422).send({ error: `Can only rerun agent_task nodes, current type: ${nodeRun.nodeType}` })
+    }
+
+    try {
+      const result = await orchestrator.rerunNode(id)
+
+      if (!result.success) {
+        const err = result.error || 'Orchestrator error'
+        const isBusinessError = /^(can only|cannot|flow has been|not found)/.test(err)
+        return reply.status(isBusinessError ? 409 : 500).send({ error: err })
+      }
+
+      return { success: true }
+    } catch (error: any) {
+      app.log.error(error)
+      return reply.status(500).send({ error: error.message || 'Failed to rerun node' })
     }
   })
 }

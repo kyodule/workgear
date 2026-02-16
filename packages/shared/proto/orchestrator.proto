@@ -15,6 +15,7 @@ service OrchestratorService {
   rpc EditNode(EditNodeRequest) returns (NodeActionResponse);
   rpc SubmitHumanInput(SubmitHumanInputRequest) returns (NodeActionResponse);
   rpc RetryNode(RetryNodeRequest) returns (NodeActionResponse);
+  rpc RerunNode(RetryNodeRequest) returns (NodeActionResponse);
 
   // Agent 测试
   rpc TestAgent(TestAgentRequest) returns (TestAgentResponse);

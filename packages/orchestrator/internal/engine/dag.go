@@ -276,6 +276,10 @@ func (e *FlowExecutor) StartFlow(ctx context.Context, flowRunID, dsl string, var
 
 // CancelFlow cancels a running flow and all its active nodes
 func (e *FlowExecutor) CancelFlow(ctx context.Context, flowRunID string) error {
+	mu := e.getDAGMutex(flowRunID)
+	mu.Lock()
+	defer mu.Unlock()
+
 	flowRun, err := e.db.GetFlowRun(ctx, flowRunID)
 	if err != nil {
 		return fmt.Errorf("get flow run: %w", err)
@@ -711,7 +715,10 @@ func (e *FlowExecutor) walkAndReset(ctx context.Context, flowRun *db.FlowRun, da
 		}
 
 		// Query existing max attempt to increment properly
-		existing, _ := e.db.GetNodeRunByFlowAndNode(ctx, flowRun.ID, succID)
+		existing, err := e.db.GetNodeRunByFlowAndNode(ctx, flowRun.ID, succID)
+		if err != nil {
+			e.logger.Warnw("Failed to get latest node run for intermediate reset", "node_id", succID, "error", err)
+		}
 		attempt := 1
 		if existing != nil {
 			attempt = existing.Attempt + 1
@@ -738,6 +745,181 @@ func (e *FlowExecutor) walkAndReset(ctx context.Context, flowRun *db.FlowRun, da
 			e.walkAndReset(ctx, flowRun, dag, succID, untilNodeID, visited)
 		}
 	}
+}
+
+// HandleRerun re-executes a completed agent_task node and resets all successor nodes
+func (e *FlowExecutor) HandleRerun(ctx context.Context, nodeRunID string) error {
+	nodeRun, err := e.db.GetNodeRun(ctx, nodeRunID)
+	if err != nil {
+		return fmt.Errorf("get node run: %w", err)
+	}
+
+	if nodeRun.Status != db.StatusCompleted {
+		return fmt.Errorf("can only rerun completed nodes, current status: %s", nodeRun.Status)
+	}
+
+	// Enforce agent_task type at orchestrator level
+	if nodeRun.NodeType == nil || *nodeRun.NodeType != "agent_task" {
+		return fmt.Errorf("can only rerun agent_task nodes, current type: %s", ptrStr(nodeRun.NodeType))
+	}
+
+	// Lock per-flow DAG mutex to prevent concurrent rerun/advance races
+	mu := e.getDAGMutex(nodeRun.FlowRunID)
+	mu.Lock()
+	defer mu.Unlock()
+
+	flowRun, err := e.db.GetFlowRun(ctx, nodeRun.FlowRunID)
+	if err != nil {
+		return fmt.Errorf("get flow run: %w", err)
+	}
+	if flowRun.Status == db.StatusCancelled {
+		return fmt.Errorf("flow has been cancelled")
+	}
+
+	// Check for active nodes — disallow rerun if any node is queued/running/waiting_human
+	activeNodes, err := e.db.GetActiveNodeRuns(ctx, nodeRun.FlowRunID)
+	if err != nil {
+		return fmt.Errorf("check active nodes: %w", err)
+	}
+	if len(activeNodes) > 0 {
+		return fmt.Errorf("cannot rerun: flow has %d active node(s), wait for them to complete first", len(activeNodes))
+	}
+
+	if flowRun.DslSnapshot == nil {
+		return fmt.Errorf("flow run %s has no DSL snapshot", flowRun.ID)
+	}
+
+	_, dag, err := ParseDSL(*flowRun.DslSnapshot)
+	if err != nil {
+		return fmt.Errorf("parse DSL: %w", err)
+	}
+
+	nodeDef := dag.GetNode(nodeRun.NodeID)
+	if nodeDef == nil {
+		return fmt.Errorf("node %s not found in DAG", nodeRun.NodeID)
+	}
+
+	// Use the latest attempt for this node (not the passed nodeRunId's attempt)
+	latestNodeRun, err := e.db.GetNodeRunByFlowAndNode(ctx, nodeRun.FlowRunID, nodeRun.NodeID)
+	if err != nil {
+		return fmt.Errorf("get latest node run: %w", err)
+	}
+	// Verify this is the latest attempt for the node
+	if latestNodeRun != nil && latestNodeRun.ID != nodeRunID {
+		return fmt.Errorf("can only rerun the latest attempt, got attempt %d but latest is %d", nodeRun.Attempt, latestNodeRun.Attempt)
+	}
+	newAttempt := 1
+	if latestNodeRun != nil {
+		newAttempt = latestNodeRun.Attempt + 1
+	}
+
+	// 1. Create new QUEUED node run for the target node
+	newNodeRun := &db.NodeRun{
+		ID:        uuid.New().String(),
+		FlowRunID: nodeRun.FlowRunID,
+		NodeID:    nodeRun.NodeID,
+		NodeType:  nodeRun.NodeType,
+		NodeName:  nodeRun.NodeName,
+		Status:    db.StatusQueued,
+		Attempt:   newAttempt,
+		Input:     nodeRun.Input,
+		CreatedAt: time.Now(),
+	}
+
+	if err := e.db.CreateNodeRun(ctx, newNodeRun); err != nil {
+		return fmt.Errorf("create rerun node run: %w", err)
+	}
+
+	// 2. Reset all successor nodes to PENDING
+	if err := e.resetSuccessorNodes(ctx, flowRun, dag, nodeRun.NodeID); err != nil {
+		e.logger.Errorw("Rerun partially failed: target node created but successor reset failed",
+			"flow_run_id", flowRun.ID, "new_node_run_id", newNodeRun.ID, "error", err)
+		return fmt.Errorf("reset successor nodes (target node already created): %w", err)
+	}
+
+	// 3. Update flow status to running last (triggers scheduler pickup)
+	if flowRun.Status != db.StatusRunning {
+		if err := e.db.UpdateFlowRunStatus(ctx, flowRun.ID, db.StatusRunning); err != nil {
+			e.logger.Errorw("Rerun partially failed: nodes created but flow status update failed",
+				"flow_run_id", flowRun.ID, "new_node_run_id", newNodeRun.ID, "error", err)
+			return fmt.Errorf("update flow status (nodes already created): %w", err)
+		}
+	}
+
+	// 4. Publish event
+	e.publishEvent(nodeRun.FlowRunID, newNodeRun.ID, nodeRun.NodeID, "node.queued", map[string]any{
+		"rerun":   true,
+		"attempt": newNodeRun.Attempt,
+	})
+
+	// 5. Record timeline
+	e.recordTimeline(ctx, flowRun.TaskID, nodeRun.FlowRunID, newNodeRun.ID, "node_rerun", map[string]any{
+		"node_id":   nodeRun.NodeID,
+		"node_name": ptrStr(nodeRun.NodeName),
+		"attempt":   newNodeRun.Attempt,
+		"message":   fmt.Sprintf("重跑节点：%s（第 %d 次）", ptrStr(nodeRun.NodeName), newNodeRun.Attempt),
+	})
+
+	e.logger.Infow("Rerunning completed node",
+		"node_id", nodeRun.NodeID,
+		"node_run_id", newNodeRun.ID,
+		"attempt", newNodeRun.Attempt,
+	)
+
+	return nil
+}
+
+// resetSuccessorNodes creates new PENDING node runs for all nodes downstream of the given node
+func (e *FlowExecutor) resetSuccessorNodes(ctx context.Context, flowRun *db.FlowRun, dag *DAG, fromNodeID string) error {
+	visited := make(map[string]bool)
+	return e.walkAndResetAll(ctx, flowRun, dag, fromNodeID, visited)
+}
+
+func (e *FlowExecutor) walkAndResetAll(ctx context.Context, flowRun *db.FlowRun, dag *DAG, fromNodeID string, visited map[string]bool) error {
+	successors := dag.GetSuccessors(fromNodeID)
+	for _, succID := range successors {
+		if visited[succID] {
+			continue
+		}
+		visited[succID] = true
+
+		succDef := dag.GetNode(succID)
+		if succDef == nil {
+			continue
+		}
+
+		// Query existing max attempt to increment properly
+		existing, err := e.db.GetNodeRunByFlowAndNode(ctx, flowRun.ID, succID)
+		if err != nil {
+			return fmt.Errorf("get latest node run for %s: %w", succID, err)
+		}
+		attempt := 1
+		if existing != nil {
+			attempt = existing.Attempt + 1
+		}
+
+		// Create a new PENDING node run
+		nr := &db.NodeRun{
+			ID:        uuid.New().String(),
+			FlowRunID: flowRun.ID,
+			NodeID:    succID,
+			NodeType:  strPtr(succDef.Type),
+			NodeName:  strPtr(succDef.Name),
+			Status:    db.StatusPending,
+			Attempt:   attempt,
+			CreatedAt: time.Now(),
+		}
+
+		if err := e.db.CreateNodeRun(ctx, nr); err != nil {
+			return fmt.Errorf("create successor node run for %s: %w", succID, err)
+		}
+
+		// Continue walking to the end of the DAG
+		if err := e.walkAndResetAll(ctx, flowRun, dag, succID, visited); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // recordTimeline creates a timeline event
