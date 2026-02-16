@@ -60,6 +60,7 @@ message ApproveNodeRequest {
 message RejectNodeRequest {
   string node_run_id = 1;
   string feedback = 2;
+  bool force = 3;  // 强制打回，绕过 max_loops 限制
 }
 
 message EditNodeRequest {

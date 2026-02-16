@@ -293,6 +293,7 @@ type RejectNodeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	NodeRunId     string                 `protobuf:"bytes,1,opt,name=node_run_id,json=nodeRunId,proto3" json:"node_run_id,omitempty"`
 	Feedback      string                 `protobuf:"bytes,2,opt,name=feedback,proto3" json:"feedback,omitempty"`
+	Force         bool                   `protobuf:"varint,3,opt,name=force,proto3" json:"force,omitempty"` // 强制打回，绕过 max_loops 限制
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -339,6 +340,13 @@ func (x *RejectNodeRequest) GetFeedback() string {
 		return x.Feedback
 	}
 	return ""
+}
+
+func (x *RejectNodeRequest) GetForce() bool {
+	if x != nil {
+		return x.Force
+	}
+	return false
 }
 
 type EditNodeRequest struct {
@@ -965,10 +973,11 @@ const file_orchestrator_proto_rawDesc = "" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\"4\n" +
 	"\x12ApproveNodeRequest\x12\x1e\n" +
-	"\vnode_run_id\x18\x01 \x01(\tR\tnodeRunId\"O\n" +
+	"\vnode_run_id\x18\x01 \x01(\tR\tnodeRunId\"e\n" +
 	"\x11RejectNodeRequest\x12\x1e\n" +
 	"\vnode_run_id\x18\x01 \x01(\tR\tnodeRunId\x12\x1a\n" +
-	"\bfeedback\x18\x02 \x01(\tR\bfeedback\"\x7f\n" +
+	"\bfeedback\x18\x02 \x01(\tR\bfeedback\x12\x14\n" +
+	"\x05force\x18\x03 \x01(\bR\x05force\"\x7f\n" +
 	"\x0fEditNodeRequest\x12\x1e\n" +
 	"\vnode_run_id\x18\x01 \x01(\tR\tnodeRunId\x12%\n" +
 	"\x0eedited_content\x18\x02 \x01(\tR\reditedContent\x12%\n" +

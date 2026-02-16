@@ -393,7 +393,7 @@ func (e *FlowExecutor) HandleApprove(ctx context.Context, nodeRunID string) erro
 }
 
 // HandleReject processes a reject action — rolls back to the target node
-func (e *FlowExecutor) HandleReject(ctx context.Context, nodeRunID, feedback string) error {
+func (e *FlowExecutor) HandleReject(ctx context.Context, nodeRunID, feedback string, force bool) error {
 	nodeRun, err := e.db.GetNodeRun(ctx, nodeRunID)
 	if err != nil {
 		return fmt.Errorf("get node run: %w", err)
@@ -407,9 +407,17 @@ func (e *FlowExecutor) HandleReject(ctx context.Context, nodeRunID, feedback str
 	if flowRun.Status == db.StatusCancelled {
 		return fmt.Errorf("flow has been cancelled")
 	}
+	// Force mode allows recovery from failed flows
+	if !force && flowRun.Status == db.StatusFailed {
+		return fmt.Errorf("flow has failed")
+	}
 
-	if nodeRun.Status != db.StatusWaitingHuman {
+	// Force mode allows rejected nodes, normal mode requires waiting_human
+	if !force && nodeRun.Status != db.StatusWaitingHuman {
 		return fmt.Errorf("node is not waiting for human action, current status: %s", nodeRun.Status)
+	}
+	if force && nodeRun.Status != db.StatusWaitingHuman && nodeRun.Status != db.StatusRejected {
+		return fmt.Errorf("node cannot be force-rejected, current status: %s", nodeRun.Status)
 	}
 
 	// Record review
@@ -452,20 +460,22 @@ func (e *FlowExecutor) HandleReject(ctx context.Context, nodeRunID, feedback str
 		return fmt.Errorf("no rollback target found for node %s", nodeRun.NodeID)
 	}
 
-	// Check max_loops
-	maxLoops := nodeDef.OnReject.GetMaxLoops()
-	if maxLoops > 0 {
-		targetNodeRun, _ := e.db.GetNodeRunByFlowAndNode(ctx, nodeRun.FlowRunID, targetNodeID)
-		if targetNodeRun != nil && targetNodeRun.Attempt >= maxLoops {
-			// Max loops reached — fail the flow
-			errMsg := fmt.Sprintf("打回次数已达上限 (%d)，节点: %s", maxLoops, nodeRun.NodeID)
-			if err := e.db.UpdateFlowRunError(ctx, nodeRun.FlowRunID, db.StatusFailed, errMsg); err != nil {
-				return err
+	// Check max_loops (skip if force=true)
+	if !force {
+		maxLoops := nodeDef.OnReject.GetMaxLoops()
+		if maxLoops > 0 {
+			targetNodeRun, _ := e.db.GetNodeRunByFlowAndNode(ctx, nodeRun.FlowRunID, targetNodeID)
+			if targetNodeRun != nil && targetNodeRun.Attempt >= maxLoops {
+				// Max loops reached — fail the flow
+				errMsg := fmt.Sprintf("打回次数已达上限 (%d)，节点: %s", maxLoops, nodeRun.NodeID)
+				if err := e.db.UpdateFlowRunError(ctx, nodeRun.FlowRunID, db.StatusFailed, errMsg); err != nil {
+					return err
+				}
+				e.publishEvent(nodeRun.FlowRunID, "", "", "flow.failed", map[string]any{
+					"error": errMsg,
+				})
+				return nil
 			}
-			e.publishEvent(nodeRun.FlowRunID, "", "", "flow.failed", map[string]any{
-				"error": errMsg,
-			})
-			return nil
 		}
 	}
 
@@ -506,6 +516,13 @@ func (e *FlowExecutor) HandleReject(ctx context.Context, nodeRunID, feedback str
 	// Also reset nodes between target and current (mark them as needing re-execution)
 	// For linear flows, we need to re-create PENDING nodes for nodes between target and current
 	e.resetIntermediateNodes(ctx, flowRun, dag, targetNodeID, nodeRun.NodeID)
+
+	// Restore flow status to running if it was failed (force reject from max_loops)
+	if flowRun.Status == db.StatusFailed {
+		if err := e.db.UpdateFlowRunStatus(ctx, flowRun.ID, db.StatusRunning); err != nil {
+			return fmt.Errorf("restore flow status: %w", err)
+		}
+	}
 
 	// Record timeline
 	e.recordTimeline(ctx, flowRun.TaskID, nodeRun.FlowRunID, nodeRunID, "review_rejected", map[string]any{

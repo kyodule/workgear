@@ -87,9 +87,9 @@ func (s *OrchestratorServer) ApproveNode(ctx context.Context, req *pb.ApproveNod
 }
 
 func (s *OrchestratorServer) RejectNode(ctx context.Context, req *pb.RejectNodeRequest) (*pb.NodeActionResponse, error) {
-	s.logger.Infow("RejectNode called", "node_run_id", req.NodeRunId, "feedback", req.Feedback)
+	s.logger.Infow("RejectNode called", "node_run_id", req.NodeRunId, "feedback", req.Feedback, "force", req.Force)
 
-	if err := s.executor.HandleReject(ctx, req.NodeRunId, req.Feedback); err != nil {
+	if err := s.executor.HandleReject(ctx, req.NodeRunId, req.Feedback, req.Force); err != nil {
 		s.logger.Errorw("RejectNode failed", "error", err)
 		return &pb.NodeActionResponse{Success: false, Error: err.Error()}, nil
 	}

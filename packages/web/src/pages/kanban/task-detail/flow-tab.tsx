@@ -248,7 +248,17 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
     if (nodeRun.status === 'waiting_human') {
       setExpanded(true)
     }
-  }, [nodeRun.status])
+    if (nodeRun.status === 'rejected' && flowStatus === 'failed') {
+      setExpanded(true)
+    }
+  }, [nodeRun.status, flowStatus])
+
+  // Auto-fill feedback for rejected nodes (pre-fill with last review comment)
+  useEffect(() => {
+    if (nodeRun.status === 'rejected' && nodeRun.reviewComment && !feedback) {
+      setFeedback(nodeRun.reviewComment)
+    }
+  }, [nodeRun.status, nodeRun.reviewComment])
 
   // Load artifacts when expanded
   useEffect(() => {
@@ -266,13 +276,14 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
     }
   }
 
-  async function handleReview(action: 'approve' | 'reject' | 'edit_and_approve') {
+  async function handleReview(action: 'approve' | 'reject' | 'edit_and_approve', force?: boolean) {
     setSubmitting(true)
     try {
       await api.post(`node-runs/${nodeRun.id}/review`, {
         json: {
           action,
           feedback: action === 'reject' ? feedback : undefined,
+          force: force || false,
         },
       })
       setFeedback('')
@@ -310,7 +321,7 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
   }
 
   const displayName = nodeRun.nodeName || nodeRun.nodeId
-  const isClickable = nodeRun.status === 'waiting_human' || nodeRun.status === 'completed' || nodeRun.status === 'failed'
+  const isClickable = nodeRun.status === 'waiting_human' || nodeRun.status === 'completed' || nodeRun.status === 'failed' || nodeRun.status === 'rejected'
 
   return (
     <div className="rounded-md border">
@@ -397,11 +408,30 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
           {/* Review actions for waiting_human */}
           {nodeRun.status === 'waiting_human' && nodeRun.nodeType === 'human_review' && !isFlowTerminal && (
             <div className="space-y-2">
+              {/* 自动填入审查意见按钮 */}
+              {nodeRun.input && extractReviewContent(nodeRun.input) && (
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      if (feedback.trim() && !confirm('当前已有反馈内容，是否覆盖？')) return
+                      const content = extractReviewContent(nodeRun.input)
+                      if (content) setFeedback(content)
+                    }}
+                    disabled={submitting}
+                    className="text-xs"
+                  >
+                    <FileText className="mr-1 h-3 w-3" />
+                    自动填入审查意见
+                  </Button>
+                </div>
+              )}
               <Textarea
                 placeholder="输入反馈（拒绝时必填）..."
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
-                rows={2}
+                rows={4}
                 className="text-sm"
               />
               <div className="flex gap-2">
@@ -409,9 +439,22 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
                   <CheckCircle className="mr-1 h-3 w-3" />
                   通过
                 </Button>
-                <Button size="sm" variant="destructive" onClick={() => handleReview('reject')} disabled={submitting || !feedback.trim()}>
+                <Button size="sm" variant="destructive" onClick={() => handleReview('reject', false)} disabled={submitting || !feedback.trim()}>
                   <RotateCcw className="mr-1 h-3 w-3" />
                   打回
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={() => {
+                    if (!confirm('确定要强制打回吗？这将绕过打回次数限制。')) return
+                    handleReview('reject', true)
+                  }} 
+                  disabled={submitting || !feedback.trim()}
+                  className="border-orange-500 text-orange-600 hover:bg-orange-50"
+                >
+                  <AlertCircle className="mr-1 h-3 w-3" />
+                  强制打回
                 </Button>
               </div>
             </div>
@@ -439,6 +482,33 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
             <p className="text-xs text-muted-foreground">流程已取消，无法操作</p>
           )}
 
+          {/* Force reject for rejected nodes when flow failed due to max_loops */}
+          {nodeRun.status === 'rejected' && nodeRun.nodeType === 'human_review' && flowStatus === 'failed' && (
+            <div className="space-y-2">
+              <p className="text-xs text-orange-600">流程因打回次数达上限而失败，可使用强制打回继续。</p>
+              <Textarea
+                placeholder="输入反馈（必填）..."
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                rows={4}
+                className="text-sm"
+              />
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={() => {
+                  if (!confirm('确定要强制打回吗？这将绕过打回次数限制并恢复流程。')) return
+                  handleReview('reject', true)
+                }} 
+                disabled={submitting || !feedback.trim()}
+                className="border-orange-500 text-orange-600 hover:bg-orange-50"
+              >
+                <AlertCircle className="mr-1 h-3 w-3" />
+                强制打回
+              </Button>
+            </div>
+          )}
+
           {/* Retry for failed nodes */}
           {nodeRun.status === 'failed' && (
             <div className="space-y-2">
@@ -460,8 +530,8 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
             </Button>
           )}
 
-          {/* Review info for reviewed nodes */}
-          {nodeRun.reviewAction && (
+          {/* Review info for reviewed nodes (exclude rejected with force-reject UI) */}
+          {nodeRun.reviewAction && !(nodeRun.status === 'rejected' && flowStatus === 'failed') && (
             <div className="text-xs text-muted-foreground">
               <span>审核结果：{nodeRun.reviewAction}</span>
               {nodeRun.reviewComment && <span> — {nodeRun.reviewComment}</span>}
@@ -471,6 +541,98 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
       )}
     </div>
   )
+}
+
+// ─── Review Content Extraction ───
+
+const severityLabels: Record<string, string> = {
+  high: '🔴 高',
+  medium: '🟡 中',
+  low: '🔵 低',
+}
+const severityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 }
+
+function extractReviewContent(input: Record<string, any> | null): string {
+  if (!input) return ''
+
+  // 从 input 中定位实际的 review 数据源
+  const source = input.review_target ?? input
+  if (!source || typeof source !== 'object') return ''
+
+  // 优先从 code_review 子字段提取，否则用 source 本身
+  const rawData = source.code_review ?? source
+
+  // 解析可能嵌套的 JSON 字符串
+  const { parsed, extra } = parseReviewData(rawData)
+  if (!parsed) return ''
+
+  const parts: string[] = []
+
+  // 1. 审查结论
+  if (typeof parsed.passed === 'boolean') {
+    parts.push(`审查结论：${parsed.passed ? '✅ 通过' : '❌ 未通过'}`)
+  }
+
+  // 2. 问题列表（按 severity 分级）
+  if (Array.isArray(parsed.issues) && parsed.issues.length > 0) {
+    const sorted = [...parsed.issues].sort((a, b) =>
+      (severityOrder[a.severity] ?? 99) - (severityOrder[b.severity] ?? 99)
+    )
+    parts.push('\n问题：')
+    sorted.forEach((issue, i) => {
+      if (typeof issue === 'string') {
+        parts.push(`${i + 1}. ${issue}`)
+      } else {
+        const sev = severityLabels[issue.severity] ?? issue.severity ?? ''
+        const loc = issue.file ? ` (${issue.file}${issue.line ? ':' + issue.line : ''})` : ''
+        parts.push(`${i + 1}. [${sev}] ${issue.description}${loc}`)
+      }
+    })
+  }
+
+  // 3. 改进建议
+  if (Array.isArray(parsed.suggestions) && parsed.suggestions.length > 0) {
+    parts.push('\n改进建议：')
+    parsed.suggestions.forEach((s, i) => {
+      parts.push(`${i + 1}. ${typeof s === 'string' ? s : JSON.stringify(s)}`)
+    })
+  }
+
+  // 4. 补充审查说明（result 字符串中 JSON 之后的文本）
+  if (extra.trim()) {
+    parts.push('\n补充说明：')
+    parts.push(extra.trim())
+  }
+
+  return parts.join('\n')
+}
+
+// 从 raw 数据中解析出结构化 review 对象和额外文本
+function parseReviewData(data: any): { parsed: any; extra: string } {
+  if (!data) return { parsed: null, extra: '' }
+
+  // 如果已经是解析好的结构（有 passed/issues 字段），直接用
+  if (typeof data.passed === 'boolean' || Array.isArray(data.issues)) {
+    return { parsed: data, extra: '' }
+  }
+
+  // 从 result 字符串中提取 JSON
+  const resultStr = typeof data.result === 'string' ? data.result : ''
+  if (!resultStr) return { parsed: null, extra: '' }
+
+  // 找到 JSON 对象的结束位置（最后一个 }）
+  const lastBrace = resultStr.lastIndexOf('}')
+  if (lastBrace === -1) return { parsed: null, extra: resultStr }
+
+  const jsonPart = resultStr.substring(0, lastBrace + 1)
+  const extraPart = resultStr.substring(lastBrace + 1)
+
+  try {
+    const parsed = JSON.parse(jsonPart)
+    return { parsed, extra: extraPart }
+  } catch {
+    return { parsed: null, extra: resultStr }
+  }
 }
 
 // ─── Helpers ───

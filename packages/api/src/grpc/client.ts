@@ -53,9 +53,9 @@ export function approveNode(nodeRunId: string): Promise<{ success: boolean; erro
   })
 }
 
-export function rejectNode(nodeRunId: string, feedback: string): Promise<{ success: boolean; error?: string }> {
+export function rejectNode(nodeRunId: string, feedback: string, force?: boolean): Promise<{ success: boolean; error?: string }> {
   return new Promise((resolve, reject) => {
-    client.RejectNode({ nodeRunId, feedback }, (err: any, response: any) => {
+    client.RejectNode({ nodeRunId, feedback, force: force || false }, (err: any, response: any) => {
       if (err) return reject(err)
       resolve(response)
     })

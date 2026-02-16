@@ -27,12 +27,13 @@ export async function nodeRunRoutes(app: FastifyInstance) {
     Body: {
       action: 'approve' | 'reject' | 'edit_and_approve'
       feedback?: string
+      force?: boolean
       editedContent?: string
       changeSummary?: string
     }
   }>('/:id/review', async (request, reply) => {
     const { id } = request.params
-    const { action, feedback, editedContent, changeSummary } = request.body
+    const { action, feedback, force, editedContent, changeSummary } = request.body
 
     // Validate node exists and is waiting for human
     const [nodeRun] = await db.select().from(nodeRuns).where(eq(nodeRuns.id, id))
@@ -40,7 +41,7 @@ export async function nodeRunRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: 'NodeRun not found' })
     }
 
-    if (nodeRun.status !== 'waiting_human') {
+    if (nodeRun.status !== 'waiting_human' && !(force && nodeRun.status === 'rejected')) {
       return reply.status(422).send({ error: `Cannot review node in status: ${nodeRun.status}` })
     }
 
@@ -55,7 +56,7 @@ export async function nodeRunRoutes(app: FastifyInstance) {
           if (!feedback) {
             return reply.status(422).send({ error: 'feedback is required for reject action' })
           }
-          result = await orchestrator.rejectNode(id, feedback)
+          result = await orchestrator.rejectNode(id, feedback, force)
           break
         case 'edit_and_approve':
           if (!editedContent) {
