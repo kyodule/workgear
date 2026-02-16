@@ -4,7 +4,8 @@ import type { Artifact, ArtifactVersion } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { MarkdownRenderer } from '@/components/markdown-renderer'
-import { ChevronDown, ChevronRight, Pencil, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Pencil, Loader2, Maximize2 } from 'lucide-react'
+import { MarkdownFullscreenDialog } from '@/components/markdown-fullscreen-dialog'
 
 interface ArtifactPreviewCardProps {
   artifact: Artifact
@@ -27,6 +28,7 @@ export function ArtifactPreviewCard({ artifact, onEdit }: ArtifactPreviewCardPro
   const [loading, setLoading] = useState(false)
   const [content, setContent] = useState('')
   const [latestVersion, setLatestVersion] = useState<ArtifactVersion | null>(null)
+  const [fullscreenOpen, setFullscreenOpen] = useState(false)
 
   async function toggleExpand() {
     if (expanded) {
@@ -92,14 +94,24 @@ export function ArtifactPreviewCard({ artifact, onEdit }: ArtifactPreviewCardPro
               <div className="max-h-[300px] overflow-y-auto rounded bg-background p-2">
                 <MarkdownRenderer content={content} />
               </div>
-              {onEdit && latestVersion && (
-                <div className="flex justify-end">
+              <div className="flex justify-end gap-1.5">
+                <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => setFullscreenOpen(true)}>
+                  <Maximize2 className="mr-1 h-3 w-3" />
+                  全屏
+                </Button>
+                {onEdit && latestVersion && (
                   <Button size="sm" variant="outline" className="h-6 text-xs" onClick={handleEdit}>
                     <Pencil className="mr-1 h-3 w-3" />
                     编辑
                   </Button>
-                </div>
-              )}
+                )}
+              </div>
+              <MarkdownFullscreenDialog
+                open={fullscreenOpen}
+                onOpenChange={setFullscreenOpen}
+                title={artifact.title}
+                content={content}
+              />
             </div>
           ) : (
             <p className="text-xs text-muted-foreground py-1">暂无内容</p>

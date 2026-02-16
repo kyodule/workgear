@@ -3,9 +3,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { FileText, Edit, Save, X } from 'lucide-react'
+import { FileText, Edit, Save, X, Maximize2 } from 'lucide-react'
 import { Textarea } from '@/components/ui/textarea'
 import { MarkdownRenderer } from '@/components/markdown-renderer'
+import { MarkdownFullscreenDialog } from '@/components/markdown-fullscreen-dialog'
 
 interface Artifact {
   path: string
@@ -247,28 +248,38 @@ function ArtifactContent({
   onContentChange,
   saving,
 }: ArtifactContentProps) {
+  const [fullscreenOpen, setFullscreenOpen] = useState(false)
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium text-gray-700">{artifact.relativePath}</h3>
-        {editable && !isEditing && (
-          <Button variant="outline" size="sm" onClick={onEdit}>
-            <Edit className="mr-1 h-3 w-3" />
-            编辑
-          </Button>
-        )}
-        {isEditing && (
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={onCancelEdit} disabled={saving}>
-              <X className="mr-1 h-3 w-3" />
-              取消
+        <div className="flex items-center gap-2">
+          {!isEditing && (
+            <Button variant="outline" size="sm" onClick={() => setFullscreenOpen(true)}>
+              <Maximize2 className="mr-1 h-3 w-3" />
+              全屏
             </Button>
-            <Button size="sm" onClick={onSave} disabled={saving}>
-              <Save className="mr-1 h-3 w-3" />
-              {saving ? '保存中...' : '保存'}
+          )}
+          {editable && !isEditing && (
+            <Button variant="outline" size="sm" onClick={onEdit}>
+              <Edit className="mr-1 h-3 w-3" />
+              编辑
             </Button>
-          </div>
-        )}
+          )}
+          {isEditing && (
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={onCancelEdit} disabled={saving}>
+                <X className="mr-1 h-3 w-3" />
+                取消
+              </Button>
+              <Button size="sm" onClick={onSave} disabled={saving}>
+                <Save className="mr-1 h-3 w-3" />
+                {saving ? '保存中...' : '保存'}
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
 
       {isEditing ? (
@@ -283,6 +294,13 @@ function ArtifactContent({
           <MarkdownRenderer content={artifact.content} />
         </div>
       )}
+
+      <MarkdownFullscreenDialog
+        open={fullscreenOpen}
+        onOpenChange={setFullscreenOpen}
+        title={artifact.relativePath}
+        content={artifact.content}
+      />
     </div>
   )
 }
