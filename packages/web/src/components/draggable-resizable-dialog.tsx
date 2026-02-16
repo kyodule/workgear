@@ -78,44 +78,40 @@ export function DraggableResizableDialog({
   const previousFocusRef = useRef<HTMLElement | null>(null)
   const titleId = useId()
 
-  // Focus trap + ESC 关闭
-  useEffect(() => {
-    if (!open) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        onOpenChange(false)
-        return
-      }
+  // Focus trap + ESC handler (attached to dialog element via onKeyDown, not document)
+  const handleDialogKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation()
+      e.nativeEvent.stopImmediatePropagation()
+      onOpenChange(false)
+      return
+    }
 
-      if (e.key === 'Tab') {
-        const dialog = dialogRef.current
-        if (!dialog) return
+    if (e.key === 'Tab') {
+      const dialog = dialogRef.current
+      if (!dialog) return
 
-        const focusable = dialog.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        )
-        if (focusable.length === 0) return
+      const focusable = dialog.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+      if (focusable.length === 0) return
 
-        const first = focusable[0]
-        const last = focusable[focusable.length - 1]
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
 
-        if (e.shiftKey) {
-          if (document.activeElement === first) {
-            e.preventDefault()
-            last.focus()
-          }
-        } else {
-          if (document.activeElement === last) {
-            e.preventDefault()
-            first.focus()
-          }
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault()
+          last.focus()
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault()
+          first.focus()
         }
       }
     }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [open, onOpenChange])
+  }
 
   // 焦点管理：打开时聚焦 dialog，关闭时返回之前的焦点
   useEffect(() => {
@@ -187,6 +183,7 @@ export function DraggableResizableDialog({
           tabIndex={-1}
           className="flex h-full flex-col outline-none"
           data-testid="draggable-resizable-dialog"
+          onKeyDown={handleDialogKeyDown}
         >
           {/* 标题栏 - 拖拽区域 */}
           <div className="drag-handle flex items-center justify-between border-b px-4 py-3 cursor-grab active:cursor-grabbing select-none">

@@ -54,7 +54,11 @@ export function NodeLogDialog({ nodeRun, open, onClose }: NodeLogDialogProps) {
   }, [logs, autoScroll])
 
   // Monitor scroll position for auto-scroll detection
+  // Depend on `open` so the listener re-binds when the dialog opens
+  // (scrollRef.current is null when dialog is closed, populated when open)
   useEffect(() => {
+    if (!open) return
+
     const scrollElement = scrollRef.current
     if (!scrollElement) return
 
@@ -65,7 +69,7 @@ export function NodeLogDialog({ nodeRun, open, onClose }: NodeLogDialogProps) {
 
     scrollElement.addEventListener('scroll', handleScroll)
     return () => scrollElement.removeEventListener('scroll', handleScroll)
-  }, [scrollRef])
+  }, [open])
 
   if (!nodeRun) return null
 
