@@ -9,7 +9,7 @@
 ## 📦 最新版本技术栈（2026年2月）
 
 ### 基础设施
-- **PostgreSQL**: 18.1（最新稳定版，2025年11月发布）
+- **PostgreSQL**: 17.2（兼容 drizzle-kit beta 版本）
 - **Redis**: 8.4.1（最新稳定版，2026年2月发布）
 - **Node.js**: 22.22.0 LTS（Jod，Maintenance LTS 至 2027年4月）
 - **pnpm**: 10.28.2（最新版，2026年2月发布）
@@ -111,7 +111,7 @@ workgear/
 
 ### 1. 基础设施
 - ✅ Monorepo 结构（pnpm workspace）
-- ✅ PostgreSQL 18.1 + Redis 8.4 Docker Compose
+- ✅ PostgreSQL 17.2 + Redis 8.4 Docker Compose
 - ✅ 数据库 Schema（17 张核心表）+ Drizzle Migration
 
 ### 2. API Server
@@ -145,7 +145,7 @@ workgear/
 
 ## 📋 核心数据库 Schema（17 张表）
 
-基于 PRD 4.4 节，使用 PostgreSQL 18.1：
+基于 PRD 4.4 节，使用 PostgreSQL 17.2：
 
 ```sql
 -- 项目表
@@ -426,7 +426,7 @@ version: '3.9'
 
 services:
   postgres:
-    image: postgres:18.1-alpine
+    image: postgres:17.2-alpine
     environment:
       POSTGRES_DB: workgear_dev
       POSTGRES_USER: workgear

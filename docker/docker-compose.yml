@@ -2,7 +2,7 @@ version: '3.9'
 
 services:
   postgres:
-    image: postgres:18.1-alpine
+    image: postgres:17.2-alpine
     container_name: workgear-postgres
     environment:
       POSTGRES_DB: workgear_dev
