@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
 import type { Artifact } from '@/lib/types'
 import { DraggableResizableDialog } from '@/components/draggable-resizable-dialog'
@@ -40,14 +40,13 @@ export function ArtifactEditorDialog({
   const [changeSummary, setChangeSummary] = useState('')
   const [saving, setSaving] = useState(false)
 
-  // Reset state when dialog opens with new content
-  function handleOpenChange(isOpen: boolean) {
-    if (isOpen) {
+  // Reset state when dialog opens
+  useEffect(() => {
+    if (open) {
       setContent(initialContent)
       setChangeSummary('')
     }
-    onOpenChange(isOpen)
-  }
+  }, [open, initialContent])
 
   async function handleSave() {
     if (!artifact || !content.trim()) return
@@ -75,7 +74,7 @@ export function ArtifactEditorDialog({
   return (
     <DraggableResizableDialog
       open={open}
-      onOpenChange={handleOpenChange}
+      onOpenChange={onOpenChange}
       defaultWidth={768}
       defaultHeight={560}
       minWidth={480}
