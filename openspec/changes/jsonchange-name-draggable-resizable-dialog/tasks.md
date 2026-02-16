@@ -13,7 +13,7 @@
 ### 创建 DraggableResizableDialog 组件
 
 - [x] 新建 `draggable-resizable-dialog.tsx` 文件 **[S]**
-- [x] 定义 `DraggableResizableDialogProps` 接口（open、onOpenChange、title、children、defaultWidth、defaultHeight、minWidth、minHeight、className、overlay） **[S]**
+- [x] 定义 `DraggableResizableDialogProps` 接口（open、onOpenChange、title、children、defaultWidth、defaultHeight、minWidth、minHeight、className、containerClassName、overlay） **[S]**
 - [x] 使用 `createPortal` 渲染到 `document.body`，open 为 false 时返回 null **[S]**
 - [x] 实现遮罩层（`bg-black/80 fixed inset-0 z-50`），点击遮罩调用 `onOpenChange(false)` **[S]**
 - [x] 使用 react-rnd 的 `<Rnd>` 组件作为 Dialog 容器，设置 `default` prop 为视口居中位置和默认尺寸 **[M]**
@@ -30,6 +30,23 @@
 - [x] 关闭按钮（X 图标）点击触发 `onOpenChange(false)` **[S]**
 - [x] 使用 `key={String(open)}` 确保每次打开时重新挂载 `<Rnd>`，恢复初始位置和尺寸 **[S]**
 
+### 可访问性（审查反馈修复）
+
+- [x] 添加 `role="dialog"` 和 `aria-modal="true"` 到 Dialog 容器 **[S]**
+- [x] 使用 `useId()` 生成标题 ID，通过 `aria-labelledby` 关联标题 **[S]**
+- [x] 关闭按钮添加 `aria-label="关闭"` **[S]**
+- [x] 实现焦点管理：打开时聚焦 Dialog，关闭时返回之前的焦点元素 **[M]**
+
+### 小屏适配（审查反馈修复）
+
+- [x] 初始坐标使用 `Math.max(0, (viewport - size) / 2)` 钳制到非负值 **[S]**
+- [x] 打开时按视口动态限制 `defaultWidth/defaultHeight`，避免固定尺寸在窄屏溢出 **[S]**
+
+### Props 语义对齐（审查反馈修复）
+
+- [x] `className` 应用到内容区域（`flex-1 overflow-y-auto p-4` 节点） **[S]**
+- [x] 新增 `containerClassName` 用于外层 `<Rnd>` 容器样式 **[S]**
+
 ## 模块：Node Log Dialog (packages/web/src/components)
 
 ### 改造 NodeLogDialog 使用 DraggableResizableDialog
@@ -45,7 +62,30 @@
 
 ## 测试验证
 
-### DraggableResizableDialog 基础功能
+### 自动化测试（审查反馈修复）
+
+- [x] 安装 vitest、@testing-library/react、@testing-library/jest-dom、@testing-library/user-event、jsdom **[M]**
+- [x] 创建 `vitest.config.ts` 和 `src/test/setup.ts` 测试基础设施 **[S]**
+- [x] 在 `package.json` 中添加 `test` 和 `test:watch` 脚本 **[S]**
+- [x] 创建 `src/components/__tests__/draggable-resizable-dialog.test.tsx` **[M]**
+- [x] 测试：open=false 时不渲染 **[S]**
+- [x] 测试：open=true 时渲染 dialog、title、children **[S]**
+- [x] 测试：overlay 默认显示，overlay=false 时隐藏 **[S]**
+- [x] 测试：role="dialog"、aria-modal="true"、aria-labelledby 关联 **[S]**
+- [x] 测试：关闭按钮有 aria-label **[S]**
+- [x] 测试：ESC 键触发 onOpenChange(false) **[S]**
+- [x] 测试：点击关闭按钮触发 onOpenChange(false) **[S]**
+- [x] 测试：点击遮罩触发 onOpenChange(false) **[S]**
+- [x] 测试：关闭后重新打开恢复默认尺寸 **[S]**
+- [x] 测试：自定义 defaultWidth/defaultHeight 传递给 Rnd **[S]**
+- [x] 测试：minWidth/minHeight 传递给 Rnd **[S]**
+- [x] 测试：bounds="window" 传递给 Rnd **[S]**
+- [x] 测试：dragHandleClassName 传递给 Rnd **[S]**
+- [x] 测试：className 应用到内容区域而非外层容器 **[S]**
+- [x] 测试：containerClassName 应用到外层 Rnd 容器 **[S]**
+- [x] 测试：小视口下初始位置钳制到非负值、尺寸不超出视口 **[S]**
+
+### DraggableResizableDialog 基础功能（手动验证）
 
 - [x] 打开 Dialog → 确认居中显示，尺寸为 defaultWidth × defaultHeight **[S]**
 - [x] 拖拽标题栏 → 确认 Dialog 跟随移动 **[S]**
