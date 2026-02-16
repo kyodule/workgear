@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { eq } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { nodeRuns } from '../db/schema.js'
+import { nodeRuns, flowRuns } from '../db/schema.js'
 import * as orchestrator from '../grpc/client.js'
 import { authenticate } from '../middleware/auth.js'
 
@@ -170,6 +170,20 @@ export async function nodeRunRoutes(app: FastifyInstance) {
 
     if (nodeRun.nodeType !== 'agent_task') {
       return reply.status(422).send({ error: `Can only rerun agent_task nodes, current type: ${nodeRun.nodeType}` })
+    }
+
+    // Check flow run is not in terminal state
+    const [flowRun] = await db
+      .select({ status: flowRuns.status })
+      .from(flowRuns)
+      .where(eq(flowRuns.id, nodeRun.flowRunId))
+
+    if (!flowRun) {
+      return reply.status(404).send({ error: 'FlowRun not found' })
+    }
+
+    if (flowRun.status === 'completed' || flowRun.status === 'cancelled') {
+      return reply.status(422).send({ error: 'Cannot rerun nodes in completed or cancelled flow' })
     }
 
     try {

@@ -452,8 +452,8 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
             </div>
           )}
 
-          {/* Rerun for completed agent_task nodes */}
-          {nodeRun.status === 'completed' && nodeRun.nodeType === 'agent_task' && flowStatus !== 'cancelled' && (
+          {/* Rerun for completed agent_task nodes (only when flow is still active) */}
+          {nodeRun.status === 'completed' && nodeRun.nodeType === 'agent_task' && flowStatus !== 'cancelled' && flowStatus !== 'completed' && (
             <Button size="sm" variant="outline" onClick={handleRerun} disabled={submitting}>
               <RotateCcw className="mr-1 h-3 w-3" />
               重跑

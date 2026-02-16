@@ -775,6 +775,9 @@ func (e *FlowExecutor) HandleRerun(ctx context.Context, nodeRunID string) error 
 	if flowRun.Status == db.StatusCancelled {
 		return fmt.Errorf("flow has been cancelled")
 	}
+	if flowRun.Status == db.StatusCompleted {
+		return fmt.Errorf("cannot rerun nodes in completed flow")
+	}
 
 	if flowRun.DslSnapshot == nil {
 		return fmt.Errorf("flow run %s has no DSL snapshot", flowRun.ID)
