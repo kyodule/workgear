@@ -19,15 +19,16 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	OrchestratorService_StartFlow_FullMethodName        = "/orchestrator.OrchestratorService/StartFlow"
-	OrchestratorService_CancelFlow_FullMethodName       = "/orchestrator.OrchestratorService/CancelFlow"
-	OrchestratorService_ApproveNode_FullMethodName      = "/orchestrator.OrchestratorService/ApproveNode"
-	OrchestratorService_RejectNode_FullMethodName       = "/orchestrator.OrchestratorService/RejectNode"
-	OrchestratorService_EditNode_FullMethodName         = "/orchestrator.OrchestratorService/EditNode"
-	OrchestratorService_SubmitHumanInput_FullMethodName = "/orchestrator.OrchestratorService/SubmitHumanInput"
-	OrchestratorService_RetryNode_FullMethodName        = "/orchestrator.OrchestratorService/RetryNode"
-	OrchestratorService_TestAgent_FullMethodName        = "/orchestrator.OrchestratorService/TestAgent"
-	OrchestratorService_EventStream_FullMethodName      = "/orchestrator.OrchestratorService/EventStream"
+	OrchestratorService_StartFlow_FullMethodName         = "/orchestrator.OrchestratorService/StartFlow"
+	OrchestratorService_CancelFlow_FullMethodName        = "/orchestrator.OrchestratorService/CancelFlow"
+	OrchestratorService_ApproveNode_FullMethodName       = "/orchestrator.OrchestratorService/ApproveNode"
+	OrchestratorService_RejectNode_FullMethodName        = "/orchestrator.OrchestratorService/RejectNode"
+	OrchestratorService_EditNode_FullMethodName          = "/orchestrator.OrchestratorService/EditNode"
+	OrchestratorService_SubmitHumanInput_FullMethodName  = "/orchestrator.OrchestratorService/SubmitHumanInput"
+	OrchestratorService_RetryNode_FullMethodName         = "/orchestrator.OrchestratorService/RetryNode"
+	OrchestratorService_TestAgent_FullMethodName         = "/orchestrator.OrchestratorService/TestAgent"
+	OrchestratorService_ReloadAgentConfig_FullMethodName = "/orchestrator.OrchestratorService/ReloadAgentConfig"
+	OrchestratorService_EventStream_FullMethodName       = "/orchestrator.OrchestratorService/EventStream"
 )
 
 // OrchestratorServiceClient is the client API for OrchestratorService service.
@@ -45,6 +46,8 @@ type OrchestratorServiceClient interface {
 	RetryNode(ctx context.Context, in *RetryNodeRequest, opts ...grpc.CallOption) (*NodeActionResponse, error)
 	// Agent 测试
 	TestAgent(ctx context.Context, in *TestAgentRequest, opts ...grpc.CallOption) (*TestAgentResponse, error)
+	// Agent 配置热重载
+	ReloadAgentConfig(ctx context.Context, in *ReloadAgentConfigRequest, opts ...grpc.CallOption) (*ReloadAgentConfigResponse, error)
 	// 事件流（服务端流式推送）
 	EventStream(ctx context.Context, in *EventStreamRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ServerEvent], error)
 }
@@ -137,6 +140,16 @@ func (c *orchestratorServiceClient) TestAgent(ctx context.Context, in *TestAgent
 	return out, nil
 }
 
+func (c *orchestratorServiceClient) ReloadAgentConfig(ctx context.Context, in *ReloadAgentConfigRequest, opts ...grpc.CallOption) (*ReloadAgentConfigResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReloadAgentConfigResponse)
+	err := c.cc.Invoke(ctx, OrchestratorService_ReloadAgentConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *orchestratorServiceClient) EventStream(ctx context.Context, in *EventStreamRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ServerEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &OrchestratorService_ServiceDesc.Streams[0], OrchestratorService_EventStream_FullMethodName, cOpts...)
@@ -171,6 +184,8 @@ type OrchestratorServiceServer interface {
 	RetryNode(context.Context, *RetryNodeRequest) (*NodeActionResponse, error)
 	// Agent 测试
 	TestAgent(context.Context, *TestAgentRequest) (*TestAgentResponse, error)
+	// Agent 配置热重载
+	ReloadAgentConfig(context.Context, *ReloadAgentConfigRequest) (*ReloadAgentConfigResponse, error)
 	// 事件流（服务端流式推送）
 	EventStream(*EventStreamRequest, grpc.ServerStreamingServer[ServerEvent]) error
 	mustEmbedUnimplementedOrchestratorServiceServer()
@@ -206,6 +221,9 @@ func (UnimplementedOrchestratorServiceServer) RetryNode(context.Context, *RetryN
 }
 func (UnimplementedOrchestratorServiceServer) TestAgent(context.Context, *TestAgentRequest) (*TestAgentResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method TestAgent not implemented")
+}
+func (UnimplementedOrchestratorServiceServer) ReloadAgentConfig(context.Context, *ReloadAgentConfigRequest) (*ReloadAgentConfigResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReloadAgentConfig not implemented")
 }
 func (UnimplementedOrchestratorServiceServer) EventStream(*EventStreamRequest, grpc.ServerStreamingServer[ServerEvent]) error {
 	return status.Error(codes.Unimplemented, "method EventStream not implemented")
@@ -375,6 +393,24 @@ func _OrchestratorService_TestAgent_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OrchestratorService_ReloadAgentConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReloadAgentConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrchestratorServiceServer).ReloadAgentConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrchestratorService_ReloadAgentConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrchestratorServiceServer).ReloadAgentConfig(ctx, req.(*ReloadAgentConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _OrchestratorService_EventStream_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(EventStreamRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -424,6 +460,10 @@ var OrchestratorService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TestAgent",
 			Handler:    _OrchestratorService_TestAgent_Handler,
+		},
+		{
+			MethodName: "ReloadAgentConfig",
+			Handler:    _OrchestratorService_ReloadAgentConfig_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

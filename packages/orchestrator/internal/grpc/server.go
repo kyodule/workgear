@@ -11,6 +11,7 @@ import (
 	grpclib "google.golang.org/grpc"
 
 	"github.com/sunshow/workgear/orchestrator/internal/agent"
+	"github.com/sunshow/workgear/orchestrator/internal/db"
 	"github.com/sunshow/workgear/orchestrator/internal/engine"
 	"github.com/sunshow/workgear/orchestrator/internal/event"
 	pb "github.com/sunshow/workgear/orchestrator/internal/grpc/pb"
@@ -23,16 +24,18 @@ type OrchestratorServer struct {
 	eventBus        *event.Bus
 	registry        *agent.Registry
 	factoryRegistry *agent.AgentFactoryRegistry
+	dbClient        *db.Client
 	logger          *zap.SugaredLogger
 }
 
 // NewOrchestratorServer creates a new gRPC server
-func NewOrchestratorServer(executor *engine.FlowExecutor, eventBus *event.Bus, registry *agent.Registry, factoryRegistry *agent.AgentFactoryRegistry, logger *zap.SugaredLogger) *OrchestratorServer {
+func NewOrchestratorServer(executor *engine.FlowExecutor, eventBus *event.Bus, registry *agent.Registry, factoryRegistry *agent.AgentFactoryRegistry, dbClient *db.Client, logger *zap.SugaredLogger) *OrchestratorServer {
 	return &OrchestratorServer{
 		executor:        executor,
 		eventBus:        eventBus,
 		registry:        registry,
 		factoryRegistry: factoryRegistry,
+		dbClient:        dbClient,
 		logger:          logger,
 	}
 }
@@ -189,6 +192,33 @@ func (s *OrchestratorServer) EventStream(req *pb.EventStreamRequest, stream pb.O
 			}
 		}
 	}
+}
+
+// ─── Agent Config Reload ───
+
+func (s *OrchestratorServer) ReloadAgentConfig(ctx context.Context, req *pb.ReloadAgentConfigRequest) (*pb.ReloadAgentConfigResponse, error) {
+	s.logger.Info("ReloadAgentConfig called, reloading providers and role mappings from database...")
+
+	result, err := agent.LoadConfig(ctx, s.logger, s.dbClient, s.registry, s.factoryRegistry)
+	if err != nil {
+		s.logger.Errorw("ReloadAgentConfig failed", "error", err)
+		errMsg := err.Error()
+		return &pb.ReloadAgentConfigResponse{
+			Success: false,
+			Error:   &errMsg,
+		}, nil
+	}
+
+	s.logger.Infow("ReloadAgentConfig completed",
+		"providers_loaded", result.ProvidersLoaded,
+		"roles_mapped", result.RolesMapped,
+	)
+
+	return &pb.ReloadAgentConfigResponse{
+		Success:         true,
+		ProvidersLoaded: int32(result.ProvidersLoaded),
+		RolesMapped:     int32(result.RolesMapped),
+	}, nil
 }
 
 // ─── Agent Test ───

@@ -709,6 +709,110 @@ func (x *TestAgentResponse) GetLogs() []string {
 	return nil
 }
 
+type ReloadAgentConfigRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReloadAgentConfigRequest) Reset() {
+	*x = ReloadAgentConfigRequest{}
+	mi := &file_orchestrator_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReloadAgentConfigRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReloadAgentConfigRequest) ProtoMessage() {}
+
+func (x *ReloadAgentConfigRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_orchestrator_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReloadAgentConfigRequest.ProtoReflect.Descriptor instead.
+func (*ReloadAgentConfigRequest) Descriptor() ([]byte, []int) {
+	return file_orchestrator_proto_rawDescGZIP(), []int{12}
+}
+
+type ReloadAgentConfigResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Success         bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Error           *string                `protobuf:"bytes,2,opt,name=error,proto3,oneof" json:"error,omitempty"`
+	ProvidersLoaded int32                  `protobuf:"varint,3,opt,name=providers_loaded,json=providersLoaded,proto3" json:"providers_loaded,omitempty"`
+	RolesMapped     int32                  `protobuf:"varint,4,opt,name=roles_mapped,json=rolesMapped,proto3" json:"roles_mapped,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ReloadAgentConfigResponse) Reset() {
+	*x = ReloadAgentConfigResponse{}
+	mi := &file_orchestrator_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReloadAgentConfigResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReloadAgentConfigResponse) ProtoMessage() {}
+
+func (x *ReloadAgentConfigResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_orchestrator_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReloadAgentConfigResponse.ProtoReflect.Descriptor instead.
+func (*ReloadAgentConfigResponse) Descriptor() ([]byte, []int) {
+	return file_orchestrator_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ReloadAgentConfigResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *ReloadAgentConfigResponse) GetError() string {
+	if x != nil && x.Error != nil {
+		return *x.Error
+	}
+	return ""
+}
+
+func (x *ReloadAgentConfigResponse) GetProvidersLoaded() int32 {
+	if x != nil {
+		return x.ProvidersLoaded
+	}
+	return 0
+}
+
+func (x *ReloadAgentConfigResponse) GetRolesMapped() int32 {
+	if x != nil {
+		return x.RolesMapped
+	}
+	return 0
+}
+
 type EventStreamRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	FlowRunId     string                 `protobuf:"bytes,1,opt,name=flow_run_id,json=flowRunId,proto3" json:"flow_run_id,omitempty"` // 可选，为空则接收所有事件
@@ -718,7 +822,7 @@ type EventStreamRequest struct {
 
 func (x *EventStreamRequest) Reset() {
 	*x = EventStreamRequest{}
-	mi := &file_orchestrator_proto_msgTypes[12]
+	mi := &file_orchestrator_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -730,7 +834,7 @@ func (x *EventStreamRequest) String() string {
 func (*EventStreamRequest) ProtoMessage() {}
 
 func (x *EventStreamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_orchestrator_proto_msgTypes[12]
+	mi := &file_orchestrator_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -743,7 +847,7 @@ func (x *EventStreamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventStreamRequest.ProtoReflect.Descriptor instead.
 func (*EventStreamRequest) Descriptor() ([]byte, []int) {
-	return file_orchestrator_proto_rawDescGZIP(), []int{12}
+	return file_orchestrator_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *EventStreamRequest) GetFlowRunId() string {
@@ -767,7 +871,7 @@ type ServerEvent struct {
 
 func (x *ServerEvent) Reset() {
 	*x = ServerEvent{}
-	mi := &file_orchestrator_proto_msgTypes[13]
+	mi := &file_orchestrator_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -779,7 +883,7 @@ func (x *ServerEvent) String() string {
 func (*ServerEvent) ProtoMessage() {}
 
 func (x *ServerEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_orchestrator_proto_msgTypes[13]
+	mi := &file_orchestrator_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -792,7 +896,7 @@ func (x *ServerEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerEvent.ProtoReflect.Descriptor instead.
 func (*ServerEvent) Descriptor() ([]byte, []int) {
-	return file_orchestrator_proto_rawDescGZIP(), []int{13}
+	return file_orchestrator_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ServerEvent) GetEventType() string {
@@ -900,6 +1004,13 @@ const file_orchestrator_proto_rawDesc = "" +
 	"\x05error\x18\x03 \x01(\tH\x01R\x05error\x88\x01\x01\x12\x12\n" +
 	"\x04logs\x18\x04 \x03(\tR\x04logsB\t\n" +
 	"\a_resultB\b\n" +
+	"\x06_error\"\x1a\n" +
+	"\x18ReloadAgentConfigRequest\"\xa8\x01\n" +
+	"\x19ReloadAgentConfigResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x19\n" +
+	"\x05error\x18\x02 \x01(\tH\x00R\x05error\x88\x01\x01\x12)\n" +
+	"\x10providers_loaded\x18\x03 \x01(\x05R\x0fprovidersLoaded\x12!\n" +
+	"\froles_mapped\x18\x04 \x01(\x05R\vrolesMappedB\b\n" +
 	"\x06_error\"4\n" +
 	"\x12EventStreamRequest\x12\x1e\n" +
 	"\vflow_run_id\x18\x01 \x01(\tR\tflowRunId\"\xc0\x01\n" +
@@ -910,7 +1021,7 @@ const file_orchestrator_proto_rawDesc = "" +
 	"\vnode_run_id\x18\x03 \x01(\tR\tnodeRunId\x12\x17\n" +
 	"\anode_id\x18\x04 \x01(\tR\x06nodeId\x12\x1b\n" +
 	"\tdata_json\x18\x05 \x01(\tR\bdataJson\x12\x1c\n" +
-	"\ttimestamp\x18\x06 \x01(\x03R\ttimestamp2\xed\x05\n" +
+	"\ttimestamp\x18\x06 \x01(\x03R\ttimestamp2\xd3\x06\n" +
 	"\x13OrchestratorService\x12L\n" +
 	"\tStartFlow\x12\x1e.orchestrator.StartFlowRequest\x1a\x1f.orchestrator.StartFlowResponse\x12O\n" +
 	"\n" +
@@ -921,7 +1032,8 @@ const file_orchestrator_proto_rawDesc = "" +
 	"\bEditNode\x12\x1d.orchestrator.EditNodeRequest\x1a .orchestrator.NodeActionResponse\x12[\n" +
 	"\x10SubmitHumanInput\x12%.orchestrator.SubmitHumanInputRequest\x1a .orchestrator.NodeActionResponse\x12M\n" +
 	"\tRetryNode\x12\x1e.orchestrator.RetryNodeRequest\x1a .orchestrator.NodeActionResponse\x12L\n" +
-	"\tTestAgent\x12\x1e.orchestrator.TestAgentRequest\x1a\x1f.orchestrator.TestAgentResponse\x12L\n" +
+	"\tTestAgent\x12\x1e.orchestrator.TestAgentRequest\x1a\x1f.orchestrator.TestAgentResponse\x12d\n" +
+	"\x11ReloadAgentConfig\x12&.orchestrator.ReloadAgentConfigRequest\x1a'.orchestrator.ReloadAgentConfigResponse\x12L\n" +
 	"\vEventStream\x12 .orchestrator.EventStreamRequest\x1a\x19.orchestrator.ServerEvent0\x01B;Z9github.com/sunshow/workgear/orchestrator/internal/grpc/pbb\x06proto3"
 
 var (
@@ -936,28 +1048,30 @@ func file_orchestrator_proto_rawDescGZIP() []byte {
 	return file_orchestrator_proto_rawDescData
 }
 
-var file_orchestrator_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_orchestrator_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_orchestrator_proto_goTypes = []any{
-	(*StartFlowRequest)(nil),        // 0: orchestrator.StartFlowRequest
-	(*StartFlowResponse)(nil),       // 1: orchestrator.StartFlowResponse
-	(*CancelFlowRequest)(nil),       // 2: orchestrator.CancelFlowRequest
-	(*CancelFlowResponse)(nil),      // 3: orchestrator.CancelFlowResponse
-	(*ApproveNodeRequest)(nil),      // 4: orchestrator.ApproveNodeRequest
-	(*RejectNodeRequest)(nil),       // 5: orchestrator.RejectNodeRequest
-	(*EditNodeRequest)(nil),         // 6: orchestrator.EditNodeRequest
-	(*SubmitHumanInputRequest)(nil), // 7: orchestrator.SubmitHumanInputRequest
-	(*RetryNodeRequest)(nil),        // 8: orchestrator.RetryNodeRequest
-	(*NodeActionResponse)(nil),      // 9: orchestrator.NodeActionResponse
-	(*TestAgentRequest)(nil),        // 10: orchestrator.TestAgentRequest
-	(*TestAgentResponse)(nil),       // 11: orchestrator.TestAgentResponse
-	(*EventStreamRequest)(nil),      // 12: orchestrator.EventStreamRequest
-	(*ServerEvent)(nil),             // 13: orchestrator.ServerEvent
-	nil,                             // 14: orchestrator.StartFlowRequest.VariablesEntry
-	nil,                             // 15: orchestrator.TestAgentRequest.ProviderConfigEntry
+	(*StartFlowRequest)(nil),          // 0: orchestrator.StartFlowRequest
+	(*StartFlowResponse)(nil),         // 1: orchestrator.StartFlowResponse
+	(*CancelFlowRequest)(nil),         // 2: orchestrator.CancelFlowRequest
+	(*CancelFlowResponse)(nil),        // 3: orchestrator.CancelFlowResponse
+	(*ApproveNodeRequest)(nil),        // 4: orchestrator.ApproveNodeRequest
+	(*RejectNodeRequest)(nil),         // 5: orchestrator.RejectNodeRequest
+	(*EditNodeRequest)(nil),           // 6: orchestrator.EditNodeRequest
+	(*SubmitHumanInputRequest)(nil),   // 7: orchestrator.SubmitHumanInputRequest
+	(*RetryNodeRequest)(nil),          // 8: orchestrator.RetryNodeRequest
+	(*NodeActionResponse)(nil),        // 9: orchestrator.NodeActionResponse
+	(*TestAgentRequest)(nil),          // 10: orchestrator.TestAgentRequest
+	(*TestAgentResponse)(nil),         // 11: orchestrator.TestAgentResponse
+	(*ReloadAgentConfigRequest)(nil),  // 12: orchestrator.ReloadAgentConfigRequest
+	(*ReloadAgentConfigResponse)(nil), // 13: orchestrator.ReloadAgentConfigResponse
+	(*EventStreamRequest)(nil),        // 14: orchestrator.EventStreamRequest
+	(*ServerEvent)(nil),               // 15: orchestrator.ServerEvent
+	nil,                               // 16: orchestrator.StartFlowRequest.VariablesEntry
+	nil,                               // 17: orchestrator.TestAgentRequest.ProviderConfigEntry
 }
 var file_orchestrator_proto_depIdxs = []int32{
-	14, // 0: orchestrator.StartFlowRequest.variables:type_name -> orchestrator.StartFlowRequest.VariablesEntry
-	15, // 1: orchestrator.TestAgentRequest.provider_config:type_name -> orchestrator.TestAgentRequest.ProviderConfigEntry
+	16, // 0: orchestrator.StartFlowRequest.variables:type_name -> orchestrator.StartFlowRequest.VariablesEntry
+	17, // 1: orchestrator.TestAgentRequest.provider_config:type_name -> orchestrator.TestAgentRequest.ProviderConfigEntry
 	0,  // 2: orchestrator.OrchestratorService.StartFlow:input_type -> orchestrator.StartFlowRequest
 	2,  // 3: orchestrator.OrchestratorService.CancelFlow:input_type -> orchestrator.CancelFlowRequest
 	4,  // 4: orchestrator.OrchestratorService.ApproveNode:input_type -> orchestrator.ApproveNodeRequest
@@ -966,18 +1080,20 @@ var file_orchestrator_proto_depIdxs = []int32{
 	7,  // 7: orchestrator.OrchestratorService.SubmitHumanInput:input_type -> orchestrator.SubmitHumanInputRequest
 	8,  // 8: orchestrator.OrchestratorService.RetryNode:input_type -> orchestrator.RetryNodeRequest
 	10, // 9: orchestrator.OrchestratorService.TestAgent:input_type -> orchestrator.TestAgentRequest
-	12, // 10: orchestrator.OrchestratorService.EventStream:input_type -> orchestrator.EventStreamRequest
-	1,  // 11: orchestrator.OrchestratorService.StartFlow:output_type -> orchestrator.StartFlowResponse
-	3,  // 12: orchestrator.OrchestratorService.CancelFlow:output_type -> orchestrator.CancelFlowResponse
-	9,  // 13: orchestrator.OrchestratorService.ApproveNode:output_type -> orchestrator.NodeActionResponse
-	9,  // 14: orchestrator.OrchestratorService.RejectNode:output_type -> orchestrator.NodeActionResponse
-	9,  // 15: orchestrator.OrchestratorService.EditNode:output_type -> orchestrator.NodeActionResponse
-	9,  // 16: orchestrator.OrchestratorService.SubmitHumanInput:output_type -> orchestrator.NodeActionResponse
-	9,  // 17: orchestrator.OrchestratorService.RetryNode:output_type -> orchestrator.NodeActionResponse
-	11, // 18: orchestrator.OrchestratorService.TestAgent:output_type -> orchestrator.TestAgentResponse
-	13, // 19: orchestrator.OrchestratorService.EventStream:output_type -> orchestrator.ServerEvent
-	11, // [11:20] is the sub-list for method output_type
-	2,  // [2:11] is the sub-list for method input_type
+	12, // 10: orchestrator.OrchestratorService.ReloadAgentConfig:input_type -> orchestrator.ReloadAgentConfigRequest
+	14, // 11: orchestrator.OrchestratorService.EventStream:input_type -> orchestrator.EventStreamRequest
+	1,  // 12: orchestrator.OrchestratorService.StartFlow:output_type -> orchestrator.StartFlowResponse
+	3,  // 13: orchestrator.OrchestratorService.CancelFlow:output_type -> orchestrator.CancelFlowResponse
+	9,  // 14: orchestrator.OrchestratorService.ApproveNode:output_type -> orchestrator.NodeActionResponse
+	9,  // 15: orchestrator.OrchestratorService.RejectNode:output_type -> orchestrator.NodeActionResponse
+	9,  // 16: orchestrator.OrchestratorService.EditNode:output_type -> orchestrator.NodeActionResponse
+	9,  // 17: orchestrator.OrchestratorService.SubmitHumanInput:output_type -> orchestrator.NodeActionResponse
+	9,  // 18: orchestrator.OrchestratorService.RetryNode:output_type -> orchestrator.NodeActionResponse
+	11, // 19: orchestrator.OrchestratorService.TestAgent:output_type -> orchestrator.TestAgentResponse
+	13, // 20: orchestrator.OrchestratorService.ReloadAgentConfig:output_type -> orchestrator.ReloadAgentConfigResponse
+	15, // 21: orchestrator.OrchestratorService.EventStream:output_type -> orchestrator.ServerEvent
+	12, // [12:22] is the sub-list for method output_type
+	2,  // [2:12] is the sub-list for method input_type
 	2,  // [2:2] is the sub-list for extension type_name
 	2,  // [2:2] is the sub-list for extension extendee
 	0,  // [0:2] is the sub-list for field type_name
@@ -990,13 +1106,14 @@ func file_orchestrator_proto_init() {
 	}
 	file_orchestrator_proto_msgTypes[10].OneofWrappers = []any{}
 	file_orchestrator_proto_msgTypes[11].OneofWrappers = []any{}
+	file_orchestrator_proto_msgTypes[13].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_orchestrator_proto_rawDesc), len(file_orchestrator_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

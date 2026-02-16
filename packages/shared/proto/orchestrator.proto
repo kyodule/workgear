@@ -19,6 +19,9 @@ service OrchestratorService {
   // Agent 测试
   rpc TestAgent(TestAgentRequest) returns (TestAgentResponse);
 
+  // Agent 配置热重载
+  rpc ReloadAgentConfig(ReloadAgentConfigRequest) returns (ReloadAgentConfigResponse);
+
   // 事件流（服务端流式推送）
   rpc EventStream(EventStreamRequest) returns (stream ServerEvent);
 }
@@ -95,6 +98,19 @@ message TestAgentResponse {
   optional string result = 2;
   optional string error = 3;
   repeated string logs = 4;
+}
+
+// ─── Agent 配置热重载 ───
+
+message ReloadAgentConfigRequest {
+  // 空请求，触发重新加载所有配置
+}
+
+message ReloadAgentConfigResponse {
+  bool success = 1;
+  optional string error = 2;
+  int32 providers_loaded = 3;
+  int32 roles_mapped = 4;
 }
 
 // ─── 事件流 ───

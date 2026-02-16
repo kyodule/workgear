@@ -1,22 +1,34 @@
 import type { FastifyInstance } from 'fastify'
-import { eq, and } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { agentProviders, agentModels } from '../db/schema.js'
 import { AGENT_TYPES, maskProviderConfig } from '../agent-types.js'
+import * as orchestrator from '../grpc/client.js'
+
+async function notifyReload(request: any, reply: any): Promise<boolean> {
+  try {
+    await orchestrator.reloadAgentConfig()
+    return true
+  } catch (err: any) {
+    request.log.error({ error: err }, 'Failed to reload agent config in Orchestrator')
+    reply.status(503).send({
+      error: 'Configuration saved but failed to reload in Orchestrator: ' + (err.message || String(err)),
+    })
+    return false
+  }
+}
 
 export async function agentProviderRoutes(app: FastifyInstance) {
   // 获取 Provider 列表（按 agent_type 过滤）
   app.get<{ Querystring: { agent_type?: string } }>('/', async (request) => {
     const { agent_type } = request.query
 
-    let query = db.select().from(agentProviders).orderBy(agentProviders.createdAt)
+    let query = db.select().from(agentProviders).$dynamic()
     if (agent_type) {
-      query = db.select().from(agentProviders)
-        .where(eq(agentProviders.agentType, agent_type))
-        .orderBy(agentProviders.createdAt)
+      query = query.where(eq(agentProviders.agentType, agent_type))
     }
 
-    const providers = await query
+    const providers = await query.orderBy(agentProviders.createdAt)
     // 脱敏 secret 字段
     return providers.map(p => ({
       ...p,
@@ -70,6 +82,8 @@ export async function agentProviderRoutes(app: FastifyInstance) {
       isDefault: isDefault ?? false,
     }).returning()
 
+    if (!await notifyReload(request, reply)) return
+
     return reply.status(201).send(result[0])
   })
 
@@ -121,6 +135,8 @@ export async function agentProviderRoutes(app: FastifyInstance) {
       .where(eq(agentProviders.id, id))
       .returning()
 
+    if (!await notifyReload(request, reply)) return
+
     const p = result[0]
     return {
       ...p,
@@ -149,6 +165,8 @@ export async function agentProviderRoutes(app: FastifyInstance) {
       .set({ isDefault: true, updatedAt: new Date() })
       .where(eq(agentProviders.id, id))
 
+    if (!await notifyReload(request, reply)) return
+
     return { success: true }
   })
 
@@ -162,6 +180,9 @@ export async function agentProviderRoutes(app: FastifyInstance) {
     }
 
     await db.delete(agentProviders).where(eq(agentProviders.id, id))
+
+    if (!await notifyReload(request, reply)) return
+
     return reply.status(204).send()
   })
 
@@ -216,6 +237,8 @@ export async function agentProviderRoutes(app: FastifyInstance) {
       isDefault: isDefault ?? false,
     }).returning()
 
+    if (!await notifyReload(request, reply)) return
+
     return reply.status(201).send(result[0])
   })
 }
@@ -244,6 +267,8 @@ export async function agentModelRoutes(app: FastifyInstance) {
       .set({ isDefault: true })
       .where(eq(agentModels.id, id))
 
+    if (!await notifyReload(request, reply)) return
+
     return { success: true }
   })
 
@@ -257,6 +282,9 @@ export async function agentModelRoutes(app: FastifyInstance) {
     }
 
     await db.delete(agentModels).where(eq(agentModels.id, id))
+
+    if (!await notifyReload(request, reply)) return
+
     return reply.status(204).send()
   })
 }

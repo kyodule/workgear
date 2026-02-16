@@ -117,6 +117,27 @@ export function testAgent(params: TestAgentParams): Promise<TestAgentResult> {
   })
 }
 
+// ─── Agent Config Reload ───
+
+export interface ReloadAgentConfigResult {
+  success: boolean
+  error?: string
+  providersLoaded: number
+  rolesMapped: number
+}
+
+export function reloadAgentConfig(): Promise<ReloadAgentConfigResult> {
+  return new Promise((resolve, reject) => {
+    client.ReloadAgentConfig({}, { deadline: Date.now() + 10_000 }, (err: any, response: any) => {
+      if (err) return reject(err)
+      if (!response.success) {
+        return reject(new Error(response.error || 'ReloadAgentConfig failed'))
+      }
+      resolve(response)
+    })
+  })
+}
+
 // ─── Event Stream ───
 
 export interface ServerEvent {

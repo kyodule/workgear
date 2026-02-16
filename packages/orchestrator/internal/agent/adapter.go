@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"sync"
 	"time"
 )
 
@@ -171,6 +172,7 @@ type RoleMapping struct {
 
 // Registry manages available agent adapters
 type Registry struct {
+	mu       sync.RWMutex
 	adapters map[string]Adapter      // provider_id → adapter (new)
 	legacy   map[string]Adapter      // name → adapter (backward compat)
 	roles    map[string]*RoleMapping // role → mapping
@@ -187,21 +189,29 @@ func NewRegistry() *Registry {
 
 // Register adds an adapter to the registry by name (backward compat)
 func (r *Registry) Register(adapter Adapter) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.legacy[adapter.Name()] = adapter
 }
 
 // RegisterProvider adds an adapter to the registry by provider ID
 func (r *Registry) RegisterProvider(providerID string, adapter Adapter) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.adapters[providerID] = adapter
 }
 
 // MapRole maps an agent role to an adapter name (backward compat)
 func (r *Registry) MapRole(role, adapterName string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.roles[role] = &RoleMapping{ProviderID: adapterName}
 }
 
 // MapRoleToProvider maps an agent role to a provider ID and model name
 func (r *Registry) MapRoleToProvider(role, providerID, modelName string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.roles[role] = &RoleMapping{
 		ProviderID: providerID,
 		ModelName:  modelName,
@@ -210,6 +220,9 @@ func (r *Registry) MapRoleToProvider(role, providerID, modelName string) {
 
 // GetAdapter returns the adapter for a given role (backward compat)
 func (r *Registry) GetAdapter(role string) (Adapter, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	
 	mapping, ok := r.roles[role]
 	if !ok {
 		return nil, &NoAdapterError{Role: role}
@@ -227,6 +240,9 @@ func (r *Registry) GetAdapter(role string) (Adapter, error) {
 
 // GetAdapterByProvider returns the adapter for a given provider ID (direct lookup)
 func (r *Registry) GetAdapterByProvider(providerID string) (Adapter, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	
 	if adapter, ok := r.adapters[providerID]; ok {
 		return adapter, true
 	}
@@ -235,6 +251,9 @@ func (r *Registry) GetAdapterByProvider(providerID string) (Adapter, bool) {
 
 // GetAdapterForRole returns the adapter and model name for a given role
 func (r *Registry) GetAdapterForRole(role string) (Adapter, string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	
 	mapping, ok := r.roles[role]
 	if !ok {
 		return nil, "", &NoAdapterError{Role: role}
@@ -257,4 +276,38 @@ type NoAdapterError struct {
 
 func (e *NoAdapterError) Error() string {
 	return "no agent adapter found for role: " + e.Role
+}
+
+// Reset clears all adapters and role mappings (used for hot-reload)
+func (r *Registry) Reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.adapters = make(map[string]Adapter)
+	r.legacy = make(map[string]Adapter)
+	r.roles = make(map[string]*RoleMapping)
+}
+
+// SwapFrom atomically replaces all internal state from another registry
+func (r *Registry) SwapFrom(other *Registry) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	other.mu.RLock()
+	defer other.mu.RUnlock()
+	r.adapters = other.adapters
+	r.legacy = other.legacy
+	r.roles = other.roles
+}
+
+// ProviderCount returns the number of registered providers (for diagnostics)
+func (r *Registry) ProviderCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.adapters)
+}
+
+// RoleCount returns the number of mapped roles (for diagnostics)
+func (r *Registry) RoleCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.roles)
 }

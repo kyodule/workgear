@@ -106,7 +106,7 @@ export function startEventForwarding(logger: { info: (...args: any[]) => void; e
         // For flow lifecycle events, broadcast to project channel so kanban pages can refresh
         const flowLifecycleEvents = ['flow.started', 'flow.completed', 'flow.cancelled', 'flow.failed']
         if (flowLifecycleEvents.includes(event.eventType) && event.flowRunId) {
-          broadcastToProjectChannel(event.flowRunId, wsEvent, logger).catch(err => {
+          broadcastToProjectChannel(event.flowRunId, wsEvent).catch(err => {
             logger.warn(`Failed to broadcast to project channel: ${err.message}`)
           })
         }
@@ -144,8 +144,7 @@ export function stopEventForwarding() {
 
 async function broadcastToProjectChannel(
   flowRunId: string,
-  wsEvent: Record<string, unknown>,
-  logger: { info: (...args: any[]) => void; error: (...args: any[]) => void; warn: (...args: any[]) => void }
+  wsEvent: Record<string, unknown>
 ) {
   const [flowRun] = await db.select().from(flowRuns).where(eq(flowRuns.id, flowRunId))
   if (!flowRun?.taskId) return

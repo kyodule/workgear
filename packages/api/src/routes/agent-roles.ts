@@ -4,6 +4,19 @@ import { db } from '../db/index.js'
 import { agentRoles, agentProviders, agentModels } from '../db/schema.js'
 import * as orchestrator from '../grpc/client.js'
 
+async function notifyReload(request: any, reply: any): Promise<boolean> {
+  try {
+    await orchestrator.reloadAgentConfig()
+    return true
+  } catch (err: any) {
+    request.log.error({ error: err }, 'Failed to reload agent config in Orchestrator')
+    reply.status(503).send({
+      error: 'Configuration saved but failed to reload in Orchestrator: ' + (err.message || String(err)),
+    })
+    return false
+  }
+}
+
 export async function agentRoleRoutes(app: FastifyInstance) {
   // 获取所有角色（含 provider 和 model 信息）
   app.get('/', async () => {
@@ -77,6 +90,8 @@ export async function agentRoleRoutes(app: FastifyInstance) {
       })
       .returning()
 
+    if (!await notifyReload(request, reply)) return
+
     return reply.status(201).send(result[0])
   })
 
@@ -117,6 +132,8 @@ export async function agentRoleRoutes(app: FastifyInstance) {
       .where(eq(agentRoles.id, id))
       .returning()
 
+    if (!await notifyReload(request, reply)) return
+
     return result[0]
   })
 
@@ -136,6 +153,9 @@ export async function agentRoleRoutes(app: FastifyInstance) {
     }
 
     await db.delete(agentRoles).where(eq(agentRoles.id, id))
+
+    if (!await notifyReload(request, reply)) return
+
     return reply.status(204).send()
   })
 
