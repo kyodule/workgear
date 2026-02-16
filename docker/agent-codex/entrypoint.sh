@@ -126,7 +126,10 @@ else
         spec)
             CODEX_ARGS="$CODEX_ARGS --sandbox read-only --skip-git-repo-check"
             ;;
-        execute|opsx_plan|opsx_apply|review)
+        review)
+            CODEX_ARGS="$CODEX_ARGS --dangerously-bypass-approvals-and-sandbox"
+            ;;
+        execute|opsx_plan|opsx_apply)
             CODEX_ARGS="$CODEX_ARGS --sandbox workspace-write --full-auto"
             ;;
     esac
