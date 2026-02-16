@@ -48,7 +48,27 @@ function PreWithCopy({ children, ...props }: React.HTMLAttributes<HTMLPreElement
 
 export function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
   return (
-    <div className={cn('prose prose-sm max-w-none dark:prose-invert', className)}>
+    <div 
+      className={cn('prose prose-sm max-w-none dark:prose-invert', className)}
+      style={{
+        '--tw-prose-body': 'hsl(var(--foreground))',
+        '--tw-prose-headings': 'hsl(var(--foreground))',
+        '--tw-prose-lead': 'hsl(var(--muted-foreground))',
+        '--tw-prose-links': 'hsl(var(--primary))',
+        '--tw-prose-bold': 'hsl(var(--foreground))',
+        '--tw-prose-counters': 'hsl(var(--muted-foreground))',
+        '--tw-prose-bullets': 'hsl(var(--muted-foreground))',
+        '--tw-prose-hr': 'hsl(var(--border))',
+        '--tw-prose-quotes': 'hsl(var(--muted-foreground))',
+        '--tw-prose-quote-borders': 'hsl(var(--border))',
+        '--tw-prose-captions': 'hsl(var(--muted-foreground))',
+        '--tw-prose-code': 'hsl(var(--foreground))',
+        '--tw-prose-pre-code': 'hsl(var(--foreground))',
+        '--tw-prose-pre-bg': 'hsl(var(--muted))',
+        '--tw-prose-th-borders': 'hsl(var(--border))',
+        '--tw-prose-td-borders': 'hsl(var(--border))',
+      } as React.CSSProperties}
+    >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
