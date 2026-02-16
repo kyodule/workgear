@@ -1,6 +1,6 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DraggableResizableDialog } from '../draggable-resizable-dialog'
 
@@ -306,5 +306,168 @@ describe('DraggableResizableDialog', () => {
       </>,
     )
     expect(triggerBtn).toHaveFocus()
+  })
+
+  // --- Focus trap ---
+
+  it('traps Tab key within dialog', () => {
+    render(
+      <DraggableResizableDialog {...defaultProps}>
+        <button data-testid="btn-1">Button 1</button>
+        <button data-testid="btn-2">Button 2</button>
+      </DraggableResizableDialog>,
+    )
+
+    const closeBtn = screen.getByTestId('dialog-close-button')
+    const btn2 = screen.getByTestId('btn-2')
+
+    // Focusable order: closeBtn (first) → btn1 → btn2 (last)
+    // Focus last focusable element
+    btn2.focus()
+    expect(btn2).toHaveFocus()
+
+    // Tab on last element should wrap to first focusable element
+    fireEvent.keyDown(btn2, { key: 'Tab' })
+    expect(closeBtn).toHaveFocus()
+  })
+
+  it('traps Shift+Tab key within dialog', () => {
+    render(
+      <DraggableResizableDialog {...defaultProps}>
+        <button data-testid="btn-1">Button 1</button>
+        <button data-testid="btn-2">Button 2</button>
+      </DraggableResizableDialog>,
+    )
+
+    const closeBtn = screen.getByTestId('dialog-close-button')
+    const btn2 = screen.getByTestId('btn-2')
+
+    // Focusable order: closeBtn (first) → btn1 → btn2 (last)
+    // Focus first focusable element
+    closeBtn.focus()
+    expect(closeBtn).toHaveFocus()
+
+    // Shift+Tab on first element should wrap to last focusable element
+    fireEvent.keyDown(closeBtn, { key: 'Tab', shiftKey: true })
+    expect(btn2).toHaveFocus()
+  })
+
+  // --- ESC key stopPropagation ---
+
+  it('calls stopPropagation on ESC key', async () => {
+    const onOpenChange = vi.fn()
+    const outerHandler = vi.fn()
+
+    // Wrap dialog in an outer div that listens for keydown
+    // This tests that stopPropagation prevents the event from reaching ancestors
+    render(
+      // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+      <div onKeyDown={outerHandler}>
+        <DraggableResizableDialog {...defaultProps} onOpenChange={onOpenChange} />
+      </div>,
+    )
+
+    // Focus the dialog so ESC fires from within it
+    await new Promise((r) => setTimeout(r, 50))
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveFocus()
+
+    await userEvent.keyboard('{Escape}')
+
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    // Outer handler should NOT be called due to stopPropagation
+    expect(outerHandler).not.toHaveBeenCalled()
+  })
+
+  // --- Body scroll lock ---
+
+  it('locks body scroll when opened', () => {
+    const originalOverflow = document.body.style.overflow
+    render(<DraggableResizableDialog {...defaultProps} open={true} />)
+    expect(document.body.style.overflow).toBe('hidden')
+    // Cleanup
+    document.body.style.overflow = originalOverflow
+  })
+
+  it('restores body scroll when closed', () => {
+    const originalOverflow = document.body.style.overflow
+    const { rerender } = render(
+      <DraggableResizableDialog {...defaultProps} open={true} />,
+    )
+    expect(document.body.style.overflow).toBe('hidden')
+
+    rerender(<DraggableResizableDialog {...defaultProps} open={false} />)
+    expect(document.body.style.overflow).toBe(originalOverflow)
+  })
+
+  it('handles multiple dialogs with reference counting', () => {
+    const originalOverflow = document.body.style.overflow
+
+    // Open first dialog
+    const { rerender: rerender1 } = render(
+      <DraggableResizableDialog {...defaultProps} open={true} />,
+    )
+    expect(document.body.style.overflow).toBe('hidden')
+
+    // Open second dialog
+    const { rerender: rerender2 } = render(
+      <DraggableResizableDialog {...defaultProps} open={true} />,
+    )
+    expect(document.body.style.overflow).toBe('hidden')
+
+    // Close first dialog - should still be locked
+    rerender1(<DraggableResizableDialog {...defaultProps} open={false} />)
+    expect(document.body.style.overflow).toBe('hidden')
+
+    // Close second dialog - should restore
+    rerender2(<DraggableResizableDialog {...defaultProps} open={false} />)
+    expect(document.body.style.overflow).toBe(originalOverflow)
+  })
+
+  // --- Footer prop ---
+
+  it('renders footer when provided', () => {
+    render(
+      <DraggableResizableDialog
+        {...defaultProps}
+        footer={<button data-testid="footer-btn">Save</button>}
+      />,
+    )
+    expect(screen.getByTestId('footer-btn')).toBeInTheDocument()
+  })
+
+  it('does not render footer when undefined', () => {
+    render(<DraggableResizableDialog {...defaultProps} footer={undefined} />)
+    const dialog = screen.getByTestId('draggable-resizable-dialog')
+    expect(dialog.querySelector('.border-t')).not.toBeInTheDocument()
+  })
+
+  // --- contentRef prop ---
+
+  it('exposes content area via contentRef', () => {
+    const ref = { current: null as HTMLDivElement | null }
+    render(
+      <DraggableResizableDialog {...defaultProps} contentRef={ref}>
+        <div data-testid="content">Content</div>
+      </DraggableResizableDialog>,
+    )
+    expect(ref.current).toBeInstanceOf(HTMLDivElement)
+    expect(ref.current).toContainElement(screen.getByTestId('content'))
+  })
+
+  it('supports callback ref for contentRef', () => {
+    let capturedNode: HTMLDivElement | null = null
+    const callbackRef = (node: HTMLDivElement | null) => {
+      capturedNode = node
+    }
+
+    render(
+      <DraggableResizableDialog {...defaultProps} contentRef={callbackRef}>
+        <div data-testid="content">Content</div>
+      </DraggableResizableDialog>,
+    )
+
+    expect(capturedNode).toBeInstanceOf(HTMLDivElement)
+    expect(capturedNode).toContainElement(screen.getByTestId('content'))
   })
 })
