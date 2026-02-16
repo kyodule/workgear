@@ -1,97 +1,97 @@
-# Delta Spec: Node Log Dialog 改用可拖拽可调整大小的 Dialog
+# Delta Spec: Node Log Dialog 修复双重滚动和 Dark Mode 日志颜色
 
 > **Type:** MODIFIED
 > **Module:** kanban
 > **Date:** 2026-02-16
-> **Change:** jsonchange-name-draggable-resizable-dialog
+> **Change:** fix-draggable-resizable-dialog
 
 ## 概述
 
-修改看板模块中的 Node Log Dialog，将固定尺寸的 Shadcn Dialog 替换为 `<DraggableResizableDialog>`（基于 react-rnd），让用户在查看节点执行日志（包含大量 JSON 格式的 tool_input / tool_result）时可以自由拖拽和调整窗口大小。
+修复 Node Log Dialog 中的两个问题：(1) 内容区域与 DraggableResizableDialog 的双重 `overflow-y-auto` 导致嵌套滚动；(2) LogEntry 组件硬编码浅色背景在 Dark Mode 下不可见。
 
 ---
 
 ## 场景
 
-### Scenario 1: Node Log Dialog 使用可拖拽可调整大小的容器
+### Scenario 1: 日志内容单层滚动
 
 ```gherkin
-Given 用户在工作流执行页面点击某个节点查看日志
-When Node Log Dialog 打开
-Then Dialog 使用 DraggableResizableDialog 组件渲染（底层为 react-rnd）
-  And 初始尺寸为 896×600（原 max-w-4xl max-h-[80vh] 的近似值）
-  And Dialog 初始位置为视口居中
-  And 标题栏显示「执行日志 - {nodeName}」和运行状态 Badge
+Given Node Log Dialog 打开且包含大量日志条目
+When 日志内容超出 Dialog 可视区域
+Then 仅有一个滚动条（DraggableResizableDialog 内容区域的滚动条）
+  And 不会出现嵌套的双层滚动条
+  And 用户滚动时行为符合预期，不会出现"滚不动"的情况
 ```
 
-### Scenario 2: 拖拽 Node Log Dialog 查看底层工作流
-
-```gherkin
-Given Node Log Dialog 处于打开状态
-  And 底层显示 DAG 工作流图
-When 用户拖拽 Dialog 标题栏将窗口移到屏幕一侧
-Then Dialog 移动到目标位置（受 bounds="window" 约束不超出视口）
-  And 用户可以同时看到 Dialog 内的日志和底层的工作流图
-  And 不影响日志内容的滚动和 WebSocket 实时更新
-```
-
-### Scenario 3: 调整 Dialog 大小以查看完整 JSON
-
-```gherkin
-Given Node Log Dialog 显示包含复杂 JSON 的 tool_input 或 tool_result
-  And JSON 内容在当前 Dialog 尺寸下需要滚动查看
-When 用户拖拽 Dialog 边缘扩大窗口（react-rnd resize 手柄）
-Then Dialog 尺寸增大
-  And 日志内容区域自动扩展，显示更多 JSON 内容
-  And CodeBlock 组件的 max-height 自适应 Dialog 高度
-```
-
-### Scenario 4: 关闭 Node Log Dialog
-
-```gherkin
-Given Node Log Dialog 处于打开状态（可能已被拖拽或调整大小）
-When 用户按下 ESC 键
-  Or 用户点击关闭按钮
-  Or 用户点击遮罩层
-Then Dialog 关闭
-  And WebSocket 日志订阅正常清理
-  And 下次打开时 Dialog 恢复到初始居中位置和默认尺寸
-```
-
-### Scenario 5: 实时日志流在拖拽/调整大小后正常工作
+### Scenario 2: 日志条目自动滚动不受影响
 
 ```gherkin
 Given Node Log Dialog 打开且节点状态为 running
-  And 用户已将 Dialog 拖拽到非居中位置并调整了大小
+  And 用户未手动向上滚动（autoScroll 为 true）
 When 新的日志事件通过 WebSocket 到达
-Then 日志内容正常追加到列表末尾
-  And 自动滚动行为不受 Dialog 位置/大小变化影响
-  And Dialog 位置和大小保持用户调整后的状态
+Then 日志列表自动滚动到底部
+  And 自动滚动行为在单层滚动结构下正常工作
 ```
 
-### Scenario 6: Dialog 内日志条目布局自适应
+### Scenario 3: Dark Mode 下助手消息可见
 
 ```gherkin
-Given Node Log Dialog 已被用户调整为较宽的尺寸（如 1200px 宽）
-When 日志中的 JSON CodeBlock 渲染
-Then CodeBlock 宽度自适应 Dialog 内容区域宽度
-  And 较短的 JSON 不会出现不必要的水平滚动
-  And 较长的 JSON 行仍可水平滚动查看
+Given 系统处于 Dark Mode
+  And Node Log Dialog 打开
+When 日志中包含 type="assistant" 的消息
+Then 消息卡片使用 dark mode 兼容的背景色（bg-blue-50 dark:bg-blue-950）
+  And 文字内容在深色背景上清晰可见
+```
+
+### Scenario 4: Dark Mode 下工具调用可见
+
+```gherkin
+Given 系统处于 Dark Mode
+  And Node Log Dialog 打开
+When 日志中包含 type="tool_use" 的工具调用
+Then 工具调用卡片使用 dark mode 兼容的背景色（bg-green-50 dark:bg-green-950）
+  And JSON CodeBlock 内容在深色背景上清晰可见
+```
+
+### Scenario 5: Dark Mode 下工具结果和执行完成可见
+
+```gherkin
+Given 系统处于 Dark Mode
+  And Node Log Dialog 打开
+When 日志中包含 type="tool_result" 或 type="result" 的条目
+Then 卡片使用 dark mode 兼容的背景色（bg-gray-50 dark:bg-gray-900）
+  And 所有文字和图标在深色背景上清晰可见
+```
+
+### Scenario 6: 调整 Dialog 大小后日志区域自适应
+
+```gherkin
+Given Node Log Dialog 打开且包含日志内容
+When 用户拖拽 Dialog 边缘调整大小
+Then 日志内容区域高度自适应 Dialog 高度
+  And 不会出现内容区域固定高度导致的空白或截断
+  And 滚动条位置正确更新
 ```
 
 ---
 
-## UI 规格
+## 变更规格
 
-### Node Log Dialog（改造后）
+### Node Log Dialog 滚动结构
 
-| 属性 | 改造前 | 改造后 |
+| 属性 | 修复前 | 修复后 |
 |------|--------|--------|
-| 容器组件 | Shadcn Dialog | DraggableResizableDialog（基于 react-rnd） |
-| 初始宽度 | `max-w-4xl`（896px） | `defaultWidth={896}` |
-| 初始高度 | `max-h-[80vh]` | `defaultHeight={600}` |
-| 位置 | 固定居中 | 初始居中，可拖拽（bounds="window"） |
-| 大小 | 固定 | 可调整，minWidth=480, minHeight=320 |
-| 标题栏 | DialogHeader | DraggableResizableDialog title prop（同时作为拖拽手柄） |
-| 内容滚动 | `h-[60vh] overflow-y-auto` | `flex-1 overflow-y-auto`（自适应） |
-| 关闭方式 | ESC / X / 遮罩 | ESC / X / 遮罩（保持不变） |
+| 外层（DraggableResizableDialog 内容区域） | `overflow-y-auto p-4` | `overflow-y-auto p-4`（不变） |
+| 内层（日志容器） | `h-full overflow-y-auto pr-4` | `pr-4`（移除 h-full 和 overflow-y-auto） |
+| 滚动层级 | 双层嵌套滚动 | 单层滚动 |
+| scrollRef | 绑定在内层容器 | 改为绑定在 DraggableResizableDialog 内容区域（通过 ref 回调或 className 选择器） |
+
+### LogEntry Dark Mode 颜色
+
+| 日志类型 | 修复前 | 修复后 |
+|----------|--------|--------|
+| assistant | `bg-blue-50` | `bg-blue-50 dark:bg-blue-950` |
+| tool_use | `bg-green-50` | `bg-green-50 dark:bg-green-950` |
+| tool_result | `bg-gray-50` | `bg-gray-50 dark:bg-gray-900` |
+| result | `bg-gray-50` | `bg-gray-50 dark:bg-gray-900` |
+| default | `bg-gray-50` | `bg-gray-50 dark:bg-gray-900` |
