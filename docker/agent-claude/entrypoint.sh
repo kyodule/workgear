@@ -24,7 +24,56 @@ echo "[agent] Git repo: ${GIT_REPO_URL:-none}"
 echo "[agent] Git branch: ${GIT_BRANCH:-main}"
 
 # ─── Step 1: Clone repository (if configured) ───
-if [ -n "$GIT_REPO_URL" ]; then
+if [ "$USE_WORKTREE" = "true" ]; then
+    # Worktree mode: /workspace is pre-mounted by orchestrator (rw bind mount)
+    echo "[agent] Worktree mode: using pre-mounted /workspace"
+    cd "$WORKSPACE"
+
+    # Configure git user inside worktree
+    git config user.email "agent@workgear.dev"
+    git config user.name "WorkGear Agent"
+
+    # Auto-detect and restore dependencies
+    if [ -d "/deps" ]; then
+        if [ -f "$WORKSPACE/pnpm-lock.yaml" ]; then
+            echo "[agent] Detected pnpm project, restoring node_modules from cache..."
+            if [ -d "/deps/node_modules" ]; then
+                cp -al /deps/node_modules "$WORKSPACE/node_modules" 2>/dev/null || \
+                    ln -s /deps/node_modules "$WORKSPACE/node_modules" 2>/dev/null || true
+            fi
+            pnpm install --frozen-lockfile 2>&1 || true
+            # Update deps cache
+            if [ -d "$WORKSPACE/node_modules" ]; then
+                rm -rf /deps/node_modules
+                cp -al "$WORKSPACE/node_modules" /deps/node_modules 2>/dev/null || true
+            fi
+        elif [ -f "$WORKSPACE/package-lock.json" ]; then
+            echo "[agent] Detected npm project, restoring node_modules from cache..."
+            if [ -d "/deps/node_modules" ]; then
+                cp -al /deps/node_modules "$WORKSPACE/node_modules" 2>/dev/null || \
+                    ln -s /deps/node_modules "$WORKSPACE/node_modules" 2>/dev/null || true
+            fi
+            npm ci 2>&1 || true
+            if [ -d "$WORKSPACE/node_modules" ]; then
+                rm -rf /deps/node_modules
+                cp -al "$WORKSPACE/node_modules" /deps/node_modules 2>/dev/null || true
+            fi
+        elif [ -f "$WORKSPACE/go.mod" ]; then
+            echo "[agent] Detected Go project, restoring module cache..."
+            export GOPATH="/deps/gopath"
+            export GOMODCACHE="/deps/gopath/pkg/mod"
+            go mod download 2>&1 || true
+        elif [ -f "$WORKSPACE/requirements.txt" ] || [ -f "$WORKSPACE/pyproject.toml" ]; then
+            echo "[agent] Detected Python project, restoring pip cache..."
+            export PIP_CACHE_DIR="/deps/pip"
+            if [ -f "$WORKSPACE/requirements.txt" ]; then
+                pip install -r "$WORKSPACE/requirements.txt" 2>&1 || true
+            fi
+        fi
+    fi
+
+    echo "[agent] Worktree ready."
+elif [ -n "$GIT_REPO_URL" ]; then
     echo "[agent] Cloning repository..."
     BRANCH="${GIT_BRANCH:-main}"
 
@@ -321,30 +370,43 @@ if [ "$SHOULD_PUSH" = "true" ] && [ -n "$GIT_REPO_URL" ]; then
                 ;;
         esac
 
-        # Create and switch to feature branch
-        git checkout -b "$FEATURE_BRANCH" 2>&1 || git checkout "$FEATURE_BRANCH" 2>&1
-        git add -A
-        git commit -m "$COMMIT_MSG" 2>&1
+        # Worktree mode: commit only, orchestrator handles push
+        if [ "$USE_WORKTREE" = "true" ]; then
+            echo "[agent] Worktree mode: committing changes (orchestrator will handle push)..."
+            git add -A
+            git commit -m "$COMMIT_MSG" 2>&1 || {
+                echo "[agent] ERROR: git commit failed in worktree mode" >&2
+                echo '{"error": "git commit failed in worktree mode"}' >&3
+                exit 1
+            }
+            COMMIT_HASH=$(git rev-parse HEAD 2>/dev/null || echo "")
+            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | head -50 || echo "")
+            CHANGED_FILES_DETAIL=$(git diff --name-status HEAD~1 HEAD 2>/dev/null | head -50 || echo "")
+        else
+            # Legacy clone mode: commit + push + PR
+            git checkout -b "$FEATURE_BRANCH" 2>&1 || git checkout "$FEATURE_BRANCH" 2>&1
+            git add -A
+            git commit -m "$COMMIT_MSG" 2>&1
 
-        # Push to feature branch
-        echo "[agent] Pushing to $FEATURE_BRANCH..."
-        git push origin "$FEATURE_BRANCH" --force 2>&1
-        echo "[agent] Changes pushed successfully to $FEATURE_BRANCH"
+            # Push to feature branch
+            echo "[agent] Pushing to $FEATURE_BRANCH..."
+            git push origin "$FEATURE_BRANCH" --force 2>&1
+            echo "[agent] Changes pushed successfully to $FEATURE_BRANCH"
 
-        # Create PR/MR if requested
-        if [ "$GIT_CREATE_PR" = "true" ]; then
-            PR_TITLE="${GIT_PR_TITLE:-$COMMIT_MSG}"
-            create_pr_or_mr "$FEATURE_BRANCH" "$BASE_BRANCH" "$PR_TITLE" "$COMMIT_MSG"
+            # Create PR/MR if requested
+            if [ "$GIT_CREATE_PR" = "true" ]; then
+                PR_TITLE="${GIT_PR_TITLE:-$COMMIT_MSG}"
+                create_pr_or_mr "$FEATURE_BRANCH" "$BASE_BRANCH" "$PR_TITLE" "$COMMIT_MSG"
+            fi
+
+            COMMIT_HASH=$(git rev-parse HEAD 2>/dev/null || echo "")
+            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | head -50 || echo "")
+            CHANGED_FILES_DETAIL=$(git diff --name-status HEAD~1 HEAD 2>/dev/null | head -50 || echo "")
         fi
 
         # ─── Record Git metadata ───
-        COMMIT_HASH=$(git rev-parse HEAD 2>/dev/null || echo "")
         PR_URL_VALUE=$(cat /output/pr_url.txt 2>/dev/null || echo "")
         PR_NUMBER_VALUE=$(cat /output/pr_number.txt 2>/dev/null || echo "0")
-        CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | head -50 || echo "")
-
-        # Collect file change types via git diff --name-status
-        CHANGED_FILES_DETAIL=$(git diff --name-status HEAD~1 HEAD 2>/dev/null | head -50 || echo "")
 
         # Resolve repo URL (strip credentials, convert SSH to HTTPS, remove .git suffix)
         REPO_URL=""

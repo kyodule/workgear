@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/sunshow/workgear/orchestrator/internal/agent"
 	"github.com/sunshow/workgear/orchestrator/internal/db"
@@ -106,6 +107,61 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 		e.logger.Warnw("Failed to get git info", "error", err)
 	}
 
+	// ─── Git repo cache: prepare worktree ───
+	var worktreePath, depsPath, baseSHA string
+	var integrationRef, integrationHeadSHA string
+	useRepoCache := e.repoManager != nil && gitRepoURL != "" && flowRun.ProjectID != nil && *flowRun.ProjectID != ""
+
+	var projectID string
+	if useRepoCache {
+		projectID = *flowRun.ProjectID
+
+		// 1. Ensure bare repo exists and is up-to-date
+		if _, err := e.repoManager.EnsureBareRepo(ctx, projectID, gitRepoURL, gitAccessToken); err != nil {
+			e.logger.Warnw("EnsureBareRepo failed, falling back to clone mode",
+				"error", err, "project_id", projectID)
+			useRepoCache = false
+		}
+
+		if useRepoCache {
+			// 2. Ensure flow integration ref
+			featureBranch := gitBranch
+			if featureBranch == "" {
+				featureBranch = "main"
+			}
+			integrationRef, integrationHeadSHA, err = e.repoManager.EnsureFlowIntegration(
+				ctx, projectID, flowRun.ID, "main", featureBranch)
+			if err != nil {
+				e.logger.Warnw("EnsureFlowIntegration failed, falling back to clone mode",
+					"error", err, "flow_run_id", flowRun.ID)
+				useRepoCache = false
+			}
+		}
+
+		if useRepoCache {
+			baseSHA = integrationHeadSHA
+
+			// 3. Create node worktree
+			worktreePath, err = e.repoManager.EnsureNodeWorktree(
+				ctx, projectID, flowRun.ID, nodeRun.ID, baseSHA)
+			if err != nil {
+				e.logger.Warnw("EnsureNodeWorktree failed, falling back to clone mode",
+					"error", err, "node_run_id", nodeRun.ID)
+				useRepoCache = false
+			} else {
+				depsPath = e.repoManager.GetDepsPath(projectID)
+
+				// Persist git state to DB
+				if dbErr := e.db.UpdateNodeRunGitState(ctx, nodeRun.ID, baseSHA, "", worktreePath); dbErr != nil {
+					e.logger.Warnw("Failed to save node git state", "error", dbErr)
+				}
+				if dbErr := e.db.UpdateFlowRunIntegration(ctx, flowRun.ID, integrationRef, integrationHeadSHA); dbErr != nil {
+					e.logger.Warnw("Failed to save flow integration state", "error", dbErr)
+				}
+			}
+		}
+	}
+
 	// Extract feedback from context (for reject/retry scenarios)
 	feedback := ""
 	if fb, ok := inputCtx["_feedback"]; ok {
@@ -136,6 +192,8 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 		RolePrompt:      rolePrompt,
 		Feedback:        feedback,
 		Model:           model,
+		WorktreePath:    worktreePath,
+		DepsPath:        depsPath,
 	}
 
 	// Resolve OpenSpec config for opsx_plan / opsx_apply modes
@@ -270,6 +328,61 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 			e.logger.Warnw("Failed to update git info", "error", err, "node_id", nodeRun.NodeID)
 			// Non-fatal: don't block flow execution
 		}
+	}
+
+	// 6a. Git repo cache: integrate node commit into flow integration ref
+	if useRepoCache {
+		// Only modes that produce code changes may need commit integration
+		requiresCommit := mode == "execute" || mode == "opsx_plan" || mode == "opsx_apply"
+
+		hasCommit := resp.GitMetadata != nil && resp.GitMetadata.Commit != ""
+
+		if requiresCommit && hasCommit {
+			commitSHA := resp.GitMetadata.Commit
+
+			// Update node commit SHA in DB
+			if dbErr := e.db.UpdateNodeRunGitState(ctx, nodeRun.ID, baseSHA, commitSHA, worktreePath); dbErr != nil {
+				e.logger.Warnw("Failed to update node commit SHA", "error", dbErr)
+			}
+
+			// Integrate commit into flow integration ref
+			newHeadSHA, intErr := e.repoManager.IntegrateNodeCommit(ctx, projectID, flowRun.ID, nodeRun.ID, commitSHA)
+			if intErr != nil {
+				return fmt.Errorf("failed to integrate node commit (cherry-pick): %w", intErr)
+			}
+
+			// Update flow integration head SHA
+			if dbErr := e.db.UpdateFlowRunIntegration(ctx, flowRun.ID, integrationRef, newHeadSHA); dbErr != nil {
+				e.logger.Warnw("Failed to update flow integration head", "error", dbErr)
+			}
+
+			// Resolve push branch: prefer resp metadata branch, fallback to gitBranch
+			pushBranch := gitBranch
+			if resp.GitMetadata.Branch != "" {
+				pushBranch = resp.GitMetadata.Branch
+			}
+			if pushBranch == "" {
+				return fmt.Errorf("cannot push integration: no branch available (gitBranch and resp.GitMetadata.Branch both empty)")
+			}
+			if pushErr := e.repoManager.PushIntegration(ctx, projectID, flowRun.ID, gitRepoURL, gitAccessToken, pushBranch); pushErr != nil {
+				return fmt.Errorf("failed to push integration to remote: %w", pushErr)
+			}
+		} else if requiresCommit && !hasCommit {
+			// No file changes in a commit-producing mode — skip integration, not an error
+			e.logger.Debugw("No commit produced in commit mode, skipping integration (no file changes)",
+				"mode", mode, "node_id", nodeRun.NodeID)
+		} else {
+			e.logger.Debugw("Skipping git integration for non-commit mode", "mode", mode, "node_id", nodeRun.NodeID)
+		}
+
+		// Cleanup node worktree (async, non-blocking)
+		go func() {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if cleanupErr := e.repoManager.CleanupNodeWorktree(cleanupCtx, projectID, flowRun.ID, nodeRun.ID); cleanupErr != nil {
+				e.logger.Warnw("Failed to cleanup node worktree", "error", cleanupErr, "node_run_id", nodeRun.ID)
+			}
+		}()
 	}
 
 	// 6b. Handle artifact creation (if configured)

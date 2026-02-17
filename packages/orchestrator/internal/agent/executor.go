@@ -85,6 +85,14 @@ func (e *DockerExecutor) Execute(ctx context.Context, req *ExecutorRequest) (*Ex
 		imageName = e.defaultImage
 	}
 
+	// Set worktree env before building envList so it's included in container env
+	if req.WorktreePath != "" {
+		if req.Env == nil {
+			req.Env = make(map[string]string)
+		}
+		req.Env["USE_WORKTREE"] = "true"
+	}
+
 	// Build environment variables list
 	envList := make([]string, 0, len(req.Env))
 	for k, v := range req.Env {
@@ -122,7 +130,23 @@ func (e *DockerExecutor) Execute(ctx context.Context, req *ExecutorRequest) (*Ex
 		"timeout", timeout,
 	)
 
-	createResp, err := e.cli.ContainerCreate(execCtx, containerConfig, nil, nil, nil, containerName)
+	// Build volume mounts
+	var binds []string
+	if req.WorktreePath != "" {
+		binds = append(binds, req.WorktreePath+":/workspace:rw")
+		e.logger.Debugw("Mounting worktree volume", "host_path", req.WorktreePath)
+	}
+	if req.DepsPath != "" {
+		binds = append(binds, req.DepsPath+":/deps:rw")
+		e.logger.Debugw("Mounting deps cache volume", "host_path", req.DepsPath)
+	}
+
+	var hostConfig *container.HostConfig
+	if len(binds) > 0 {
+		hostConfig = &container.HostConfig{Binds: binds}
+	}
+
+	createResp, err := e.cli.ContainerCreate(execCtx, containerConfig, hostConfig, nil, nil, containerName)
 	if err != nil {
 		return nil, fmt.Errorf("create container: %w", err)
 	}

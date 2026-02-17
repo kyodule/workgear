@@ -30,6 +30,9 @@ type AgentRequest struct {
 	Feedback        string         `json:"feedback"`
 	Model           string         `json:"model"` // Request-level model (highest priority)
 	OpsxConfig      *OpsxConfig    `json:"opsx,omitempty"`
+	// Git repo cache: pre-created worktree paths
+	WorktreePath    string         `json:"worktree_path,omitempty"`
+	DepsPath        string         `json:"deps_path,omitempty"`
 }
 
 // OpsxConfig holds OpenSpec-specific configuration for opsx_plan / opsx_apply modes
@@ -116,6 +119,9 @@ type ExecutorRequest struct {
 	WorkDir        string            // Working directory
 	Timeout        time.Duration     // Execution timeout
 	OnLogEvent     LogEventCallback  // Per-execution log event callback (thread-safe)
+	// Git repo cache: volume mounts
+	WorktreePath   string            // Host path to node worktree (mounted as /workspace:rw)
+	DepsPath       string            // Host path to dependency cache (mounted as /deps:rw)
 }
 
 // ExecutorResponse is the runtime-layer response

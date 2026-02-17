@@ -113,6 +113,9 @@ func (e *FlowExecutor) advanceDAG(ctx context.Context, flowRunID string) error {
 		// Cleanup per-flow DAG mutex
 		e.cleanupDAGMutex(flowRunID)
 
+		// Async cleanup git repo cache worktrees
+		e.asyncCleanupFlowRepoState(flowRunID)
+
 		e.logger.Infow("Flow completed", "flow_run_id", flowRunID)
 		return nil
 	}
@@ -143,6 +146,9 @@ func (e *FlowExecutor) advanceDAG(ctx context.Context, flowRunID string) error {
 
 		// Cleanup per-flow DAG mutex
 		e.cleanupDAGMutex(flowRunID)
+
+		// Async cleanup git repo cache worktrees
+		e.asyncCleanupFlowRepoState(flowRunID)
 
 		e.logger.Infow("Flow failed (some nodes failed)", "flow_run_id", flowRunID)
 	}
@@ -323,6 +329,9 @@ func (e *FlowExecutor) CancelFlow(ctx context.Context, flowRunID string) error {
 
 	// Cleanup per-flow DAG mutex
 	e.cleanupDAGMutex(flowRunID)
+
+	// Async cleanup git repo cache worktrees
+	e.asyncCleanupFlowRepoState(flowRunID)
 
 	// Auto-move task back to "Backlog" column
 	if err := e.db.UpdateTaskColumn(ctx, flowRun.TaskID, "Backlog"); err != nil {
@@ -983,4 +992,47 @@ func (e *FlowExecutor) recordTimeline(ctx context.Context, taskID, flowRunID, no
 	if err := e.db.CreateTimelineEvent(ctx, evt); err != nil {
 		e.logger.Warnw("Failed to create timeline event", "error", err)
 	}
+}
+
+// asyncCleanupFlowRepoState asynchronously cleans up git repo cache state for a completed/failed/cancelled flow.
+func (e *FlowExecutor) asyncCleanupFlowRepoState(flowRunID string) {
+	if e.repoManager == nil {
+		return
+	}
+
+	go func() {
+		// Retry cleanup with exponential backoff to avoid race with container shutdown
+		maxRetries := 3
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			if attempt > 1 {
+				time.Sleep(time.Duration(attempt*10) * time.Second)
+			}
+
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+
+			flowRun, err := e.db.GetFlowRun(cleanupCtx, flowRunID)
+			if err != nil {
+				e.logger.Warnw("Failed to get flow run for repo cleanup", "error", err, "flow_run_id", flowRunID, "attempt", attempt)
+				cancel()
+				continue
+			}
+
+			if flowRun.ProjectID == nil || *flowRun.ProjectID == "" {
+				cancel()
+				return
+			}
+
+			if err := e.repoManager.CleanupFlowState(cleanupCtx, *flowRun.ProjectID, flowRunID); err != nil {
+				e.logger.Warnw("Failed to cleanup flow repo state", "error", err, "flow_run_id", flowRunID, "attempt", attempt)
+				cancel()
+				if attempt < maxRetries {
+					continue
+				}
+			} else {
+				cancel()
+				return
+			}
+			cancel()
+		}
+	}()
 }

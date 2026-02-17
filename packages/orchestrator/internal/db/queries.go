@@ -15,14 +15,18 @@ import (
 // GetFlowRun retrieves a flow run by ID
 func (c *Client) GetFlowRun(ctx context.Context, id string) (*FlowRun, error) {
 	row := c.pool.QueryRow(ctx, `
-		SELECT id, task_id, workflow_id, status, error, dsl_snapshot, variables,
-		       started_at, completed_at, created_at
-		FROM flow_runs WHERE id = $1
+		SELECT fr.id, fr.task_id, fr.workflow_id, t.project_id, fr.status, fr.error, fr.dsl_snapshot, fr.variables,
+		       fr.started_at, fr.completed_at, fr.created_at,
+		       fr.integration_ref, fr.integration_head_sha
+		FROM flow_runs fr
+		LEFT JOIN tasks t ON fr.task_id = t.id
+		WHERE fr.id = $1
 	`, id)
 
 	var fr FlowRun
-	err := row.Scan(&fr.ID, &fr.TaskID, &fr.WorkflowID, &fr.Status, &fr.Error,
-		&fr.DslSnapshot, &fr.Variables, &fr.StartedAt, &fr.CompletedAt, &fr.CreatedAt)
+	err := row.Scan(&fr.ID, &fr.TaskID, &fr.WorkflowID, &fr.ProjectID, &fr.Status, &fr.Error,
+		&fr.DslSnapshot, &fr.Variables, &fr.StartedAt, &fr.CompletedAt, &fr.CreatedAt,
+		&fr.IntegrationRef, &fr.IntegrationHeadSha)
 	if err != nil {
 		return nil, fmt.Errorf("get flow run: %w", err)
 	}
@@ -508,11 +512,13 @@ func (c *Client) GetNodeRunByFlowAndNode(ctx context.Context, flowRunID, nodeID 
 // GetRecoverableFlowRuns returns flow runs that need recovery after restart
 func (c *Client) GetRecoverableFlowRuns(ctx context.Context) ([]*FlowRun, error) {
 	rows, err := c.pool.Query(ctx, `
-		SELECT id, task_id, workflow_id, status, error, dsl_snapshot, variables,
-		       started_at, completed_at, created_at
-		FROM flow_runs
-		WHERE status IN ('running', 'pending')
-		ORDER BY created_at ASC
+		SELECT fr.id, fr.task_id, fr.workflow_id, t.project_id, fr.status, fr.error, fr.dsl_snapshot, fr.variables,
+		       fr.started_at, fr.completed_at, fr.created_at,
+		       fr.integration_ref, fr.integration_head_sha
+		FROM flow_runs fr
+		LEFT JOIN tasks t ON fr.task_id = t.id
+		WHERE fr.status IN ('running', 'pending')
+		ORDER BY fr.created_at ASC
 	`)
 	if err != nil {
 		return nil, err
@@ -522,8 +528,9 @@ func (c *Client) GetRecoverableFlowRuns(ctx context.Context) ([]*FlowRun, error)
 	var result []*FlowRun
 	for rows.Next() {
 		var fr FlowRun
-		if err := rows.Scan(&fr.ID, &fr.TaskID, &fr.WorkflowID, &fr.Status, &fr.Error,
-			&fr.DslSnapshot, &fr.Variables, &fr.StartedAt, &fr.CompletedAt, &fr.CreatedAt); err != nil {
+		if err := rows.Scan(&fr.ID, &fr.TaskID, &fr.WorkflowID, &fr.ProjectID, &fr.Status, &fr.Error,
+			&fr.DslSnapshot, &fr.Variables, &fr.StartedAt, &fr.CompletedAt, &fr.CreatedAt,
+			&fr.IntegrationRef, &fr.IntegrationHeadSha); err != nil {
 			return nil, err
 		}
 		result = append(result, &fr)
@@ -889,4 +896,50 @@ func (c *Client) GetModelsForProvider(ctx context.Context, providerID string) ([
 	return result, nil
 }
 
+// ─── Git Repo Cache Queries ───
 
+// UpdateFlowRunIntegration updates the integration ref and head SHA on a flow run.
+func (c *Client) UpdateFlowRunIntegration(ctx context.Context, flowRunID, integrationRef, headSHA string) error {
+	_, err := c.pool.Exec(ctx, `
+		UPDATE flow_runs
+		SET integration_ref = $1, integration_head_sha = $2
+		WHERE id = $3
+	`, integrationRef, headSHA, flowRunID)
+	if err != nil {
+		return fmt.Errorf("update flow run integration: %w", err)
+	}
+	return nil
+}
+
+// UpdateNodeRunGitState updates the git execution state on a node run.
+func (c *Client) UpdateNodeRunGitState(ctx context.Context, nodeRunID, baseSHA, commitSHA, worktreePath string) error {
+	_, err := c.pool.Exec(ctx, `
+		UPDATE node_runs
+		SET base_sha = $1, commit_sha = $2, worktree_path = $3
+		WHERE id = $4
+	`, nilIfEmpty(baseSHA), nilIfEmpty(commitSHA), nilIfEmpty(worktreePath), nodeRunID)
+	if err != nil {
+		return fmt.Errorf("update node run git state: %w", err)
+	}
+	return nil
+}
+
+// GetTaskProjectID retrieves the project_id for a task.
+func (c *Client) GetTaskProjectID(ctx context.Context, taskID string) (string, error) {
+	var projectID string
+	err := c.pool.QueryRow(ctx, `
+		SELECT project_id FROM tasks WHERE id = $1
+	`, taskID).Scan(&projectID)
+	if err != nil {
+		return "", fmt.Errorf("get task project id: %w", err)
+	}
+	return projectID, nil
+}
+
+// nilIfEmpty returns nil for empty strings, or a pointer to the string.
+func nilIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}

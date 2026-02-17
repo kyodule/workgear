@@ -13,15 +13,17 @@ import (
 	"github.com/sunshow/workgear/orchestrator/internal/agent"
 	"github.com/sunshow/workgear/orchestrator/internal/db"
 	"github.com/sunshow/workgear/orchestrator/internal/event"
+	"github.com/sunshow/workgear/orchestrator/internal/repo"
 )
 
 // FlowExecutor is the core engine that drives flow execution
 type FlowExecutor struct {
-	db       *db.Client
-	eventBus *event.Bus
-	registry *agent.Registry
-	logger   *zap.SugaredLogger
-	workerID string
+	db          *db.Client
+	eventBus    *event.Bus
+	registry    *agent.Registry
+	logger      *zap.SugaredLogger
+	workerID    string
+	repoManager *repo.RepoManager // Git repo cache manager (nil = disabled)
 
 	// Concurrency control
 	maxConcurrency int            // global max concurrent agent executions
@@ -44,6 +46,7 @@ func NewFlowExecutor(
 	registry *agent.Registry,
 	logger *zap.SugaredLogger,
 	maxConcurrency int,
+	repoManager *repo.RepoManager,
 ) *FlowExecutor {
 	if maxConcurrency <= 0 {
 		maxConcurrency = 5
@@ -58,6 +61,7 @@ func NewFlowExecutor(
 		sem:            make(chan struct{}, maxConcurrency),
 		flowCancels:    make(map[string]map[string]context.CancelFunc),
 		dagMutexes:     make(map[string]*sync.Mutex),
+		repoManager:    repoManager,
 	}
 }
 

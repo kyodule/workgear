@@ -148,6 +148,9 @@ export const flowRuns = pgTable('flow_runs', {
   prNumber: integer('pr_number'),
   prMergedAt: timestamp('pr_merged_at', { withTimezone: true }),
   mergeCommitSha: varchar('merge_commit_sha', { length: 100 }),
+  // Git repo cache fields
+  integrationRef: varchar('integration_ref', { length: 200 }),
+  integrationHeadSha: varchar('integration_head_sha', { length: 100 }),
   startedAt: timestamp('started_at', { withTimezone: true }),
   completedAt: timestamp('completed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -178,6 +181,10 @@ export const nodeRuns = pgTable('node_runs', {
   completedAt: timestamp('completed_at', { withTimezone: true }),
   recoveryCheckpoint: jsonb('recovery_checkpoint'),
   logStream: jsonb('log_stream'),
+  // Git repo cache fields
+  baseSha: varchar('base_sha', { length: 100 }),
+  commitSha: varchar('commit_sha', { length: 100 }),
+  worktreePath: varchar('worktree_path', { length: 500 }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('idx_node_runs_flow_run_id').on(table.flowRunId),

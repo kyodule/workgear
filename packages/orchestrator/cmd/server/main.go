@@ -18,6 +18,7 @@ import (
 	"github.com/sunshow/workgear/orchestrator/internal/db"
 	"github.com/sunshow/workgear/orchestrator/internal/engine"
 	"github.com/sunshow/workgear/orchestrator/internal/event"
+	"github.com/sunshow/workgear/orchestrator/internal/repo"
 	grpcserver "github.com/sunshow/workgear/orchestrator/internal/grpc"
 )
 
@@ -83,7 +84,21 @@ func main() {
 			maxConcurrency = n
 		}
 	}
-	executor := engine.NewFlowExecutor(dbClient, eventBus, registry, sugar, maxConcurrency)
+
+	// 4a. Initialize RepoManager for git repo caching (optional)
+	var repoManager *repo.RepoManager
+	repoCacheDir := os.Getenv("REPO_CACHE_DIR")
+	if repoCacheDir == "" {
+		repoCacheDir = "/var/lib/workgear/repos"
+	}
+	if os.Getenv("DISABLE_REPO_CACHE") != "true" {
+		repoManager = repo.NewRepoManager(repoCacheDir, sugar)
+		sugar.Infof("Git repo cache enabled: %s", repoCacheDir)
+	} else {
+		sugar.Info("Git repo cache disabled")
+	}
+
+	executor := engine.NewFlowExecutor(dbClient, eventBus, registry, sugar, maxConcurrency, repoManager)
 
 	// 5. Start the worker loop (recovers stale state + polls for work)
 	if err := executor.Start(ctx); err != nil {

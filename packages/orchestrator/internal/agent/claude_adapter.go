@@ -156,11 +156,13 @@ func (a *ClaudeCodeAdapter) BuildRequest(ctx context.Context, req *AgentRequest)
 
 	// 3. Build executor request
 	return &ExecutorRequest{
-		Image:   a.image,
-		Command: nil, // Use image's ENTRYPOINT
-		Env:     env,
-		WorkDir: "/workspace",
-		Timeout: 10 * time.Minute,
+		Image:        a.image,
+		Command:      nil, // Use image's ENTRYPOINT
+		Env:          env,
+		WorkDir:      "/workspace",
+		Timeout:      10 * time.Minute,
+		WorktreePath: req.WorktreePath,
+		DepsPath:     req.DepsPath,
 	}, nil
 }
 

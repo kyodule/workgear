@@ -7,6 +7,7 @@ type FlowRun struct {
 	ID          string     `json:"id"`
 	TaskID      string     `json:"task_id"`
 	WorkflowID  string     `json:"workflow_id"`
+	ProjectID   *string    `json:"project_id"`
 	Status      string     `json:"status"` // pending / running / completed / failed / cancelled
 	Error       *string    `json:"error"`
 	DslSnapshot *string    `json:"dsl_snapshot"`
@@ -14,6 +15,9 @@ type FlowRun struct {
 	StartedAt   *time.Time `json:"started_at"`
 	CompletedAt *time.Time `json:"completed_at"`
 	CreatedAt   time.Time  `json:"created_at"`
+	// Git repo cache fields
+	IntegrationRef     *string `json:"integration_ref"`
+	IntegrationHeadSha *string `json:"integration_head_sha"`
 }
 
 // NodeRun 节点执行实例
@@ -38,6 +42,10 @@ type NodeRun struct {
 	RecoveryCheckpoint *string `json:"recovery_checkpoint"`
 	LogStream          *string `json:"log_stream"` // JSON array: [{type, content, timestamp}, ...]
 	CreatedAt          time.Time  `json:"created_at"`
+	// Git repo cache fields
+	BaseSha      *string `json:"base_sha"`
+	CommitSha    *string `json:"commit_sha"`
+	WorktreePath *string `json:"worktree_path"`
 }
 
 // TimelineEvent 时间线事件
