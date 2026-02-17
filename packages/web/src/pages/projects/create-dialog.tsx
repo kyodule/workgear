@@ -3,14 +3,7 @@ import { useForm } from 'react-hook-form'
 import { api } from '@/lib/api'
 import type { Project, GitMergeMethod } from '@/lib/types'
 import { useProjectStore } from '@/stores/project-store'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { DraggableResizableDialog } from '@/components/draggable-resizable-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -62,102 +55,104 @@ export function CreateProjectDialog({ open, onOpenChange, onSuccess }: CreatePro
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>新建项目</DialogTitle>
-          <DialogDescription>创建一个新的 WorkGear 项目</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">项目名称 *</Label>
-              <Input
-                id="name"
-                placeholder="我的项目"
-                {...register('name', { required: '项目名称不能为空' })}
-              />
-              {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">描述</Label>
-              <Textarea
-                id="description"
-                placeholder="项目描述（可选）"
-                {...register('description')}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="visibility">可见性</Label>
-              <Select value={visibility} onValueChange={(v) => setValue('visibility', v as 'private' | 'public')}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="private">私有 — 仅成员可见</SelectItem>
-                  <SelectItem value="public">公开 — 所有人可查看</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="gitRepoUrl">Git 仓库地址</Label>
-              <Input
-                id="gitRepoUrl"
-                placeholder="https://github.com/user/repo.git"
-                {...register('gitRepoUrl')}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="gitAccessToken">Git Access Token</Label>
-              <Input
-                id="gitAccessToken"
-                type="password"
-                placeholder="ghp_xxxx 或 glpat-xxxx"
-                {...register('gitAccessToken')}
-              />
-              <p className="text-xs text-muted-foreground">
-                用于 Agent 自动提交代码，需要仓库写权限
-              </p>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="autoMergePr">自动合并 PR</Label>
-                <p className="text-xs text-muted-foreground">
-                  流程完成后自动合并 PR 到目标分支
-                </p>
-              </div>
-              <Switch
-                id="autoMergePr"
-                checked={autoMergePr}
-                onCheckedChange={(checked) => setValue('autoMergePr', checked)}
-              />
-            </div>
-            {autoMergePr && (
-              <div className="space-y-2">
-                <Label htmlFor="gitMergeMethod">合并方式</Label>
-                <Select value={gitMergeMethod} onValueChange={(v) => setValue('gitMergeMethod', v as GitMergeMethod)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="merge">Merge — 创建合并提交（推荐）</SelectItem>
-                    <SelectItem value="squash">Squash — 压缩为单个提交</SelectItem>
-                    <SelectItem value="rebase">Rebase — 线性合并</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+    <DraggableResizableDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="新建项目"
+      defaultWidth={600}
+      defaultHeight={520}
+      minWidth={480}
+      minHeight={400}
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            取消
+          </Button>
+          <Button type="submit" form="create-project-form" disabled={loading}>
+            {loading ? '创建中...' : '创建'}
+          </Button>
+        </>
+      }
+    >
+      <form id="create-project-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="name">项目名称 *</Label>
+          <Input
+            id="name"
+            placeholder="我的项目"
+            {...register('name', { required: '项目名称不能为空' })}
+          />
+          {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="description">描述</Label>
+          <Textarea
+            id="description"
+            placeholder="项目描述（可选）"
+            {...register('description')}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="visibility">可见性</Label>
+          <Select value={visibility} onValueChange={(v) => setValue('visibility', v as 'private' | 'public')}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="private">私有 — 仅成员可见</SelectItem>
+              <SelectItem value="public">公开 — 所有人可查看</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="gitRepoUrl">Git 仓库地址</Label>
+          <Input
+            id="gitRepoUrl"
+            placeholder="https://github.com/user/repo.git"
+            {...register('gitRepoUrl')}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="gitAccessToken">Git Access Token</Label>
+          <Input
+            id="gitAccessToken"
+            type="password"
+            placeholder="ghp_xxxx 或 glpat-xxxx"
+            {...register('gitAccessToken')}
+          />
+          <p className="text-xs text-muted-foreground">
+            用于 Agent 自动提交代码，需要仓库写权限
+          </p>
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="autoMergePr">自动合并 PR</Label>
+            <p className="text-xs text-muted-foreground">
+              流程完成后自动合并 PR 到目标分支
+            </p>
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              取消
-            </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? '创建中...' : '创建'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+          <Switch
+            id="autoMergePr"
+            checked={autoMergePr}
+            onCheckedChange={(checked) => setValue('autoMergePr', checked)}
+          />
+        </div>
+        {autoMergePr && (
+          <div className="space-y-2">
+            <Label htmlFor="gitMergeMethod">合并方式</Label>
+            <Select value={gitMergeMethod} onValueChange={(v) => setValue('gitMergeMethod', v as GitMergeMethod)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="merge">Merge — 创建合并提交（推荐）</SelectItem>
+                <SelectItem value="squash">Squash — 压缩为单个提交</SelectItem>
+                <SelectItem value="rebase">Rebase — 线性合并</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </form>
+    </DraggableResizableDialog>
   )
 }

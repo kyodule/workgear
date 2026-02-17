@@ -31,13 +31,12 @@ WorkGear 是一个 AI Agent 工作流编排平台，支持 ClaudeCode 等 Agent 
 - 自定义颜色通过 CSS 变量 + `@theme inline` 映射：`--color-primary: hsl(var(--primary))`
 - 前端 UI 组件基于 Shadcn/ui 模式（Radix UI + Tailwind），组件位于 `packages/web/src/components/ui/`
 
-### 对话框规范（统一 + 渐进式披露）
+### 对话框规范（统一）
 
 完整规范见：`docs/spec/16-dialog-ux-guidelines.md`
 
 必须遵守的硬规则：
 
-- 对话框层级按渐进式披露选择：`L0 内联` → `L1 Popover` → `L2 Dialog` → `L3 Sheet` → `L4 DraggableResizableDialog`。
 - `Sheet` 内若打开 Portal 子弹窗（挂到 `document.body`），父 `Sheet` 必须 `modal={false}`。
 - 父 `SheetContent` 必须在 `onInteractOutside` 中对白名单子弹窗来源执行 `event.preventDefault()`，防止误关闭父层。
 - 日志类弹窗必须支持直接滚轮/触控板滚动，不允许“只能拖右侧滚动条”。
@@ -116,7 +115,7 @@ scripts/         → 工具脚本
 | 开发 API | `docs/spec/08-api-design.md` | REST API、WebSocket 事件、gRPC Proto |
 | 了解实现细节 | `docs/spec/09-implementation-details.md` | 执行器、Outbox Worker、WebSocket 推送 |
 | 了解安全要求 | `docs/spec/11-security.md` | Agent 沙箱、数据分级、审计 |
-| 开发弹层与对话框交互 | `docs/spec/16-dialog-ux-guidelines.md` | 渐进式披露、组件选型、嵌套弹窗互操作 |
+| 开发弹层与对话框交互 | `docs/spec/16-dialog-ux-guidelines.md` | 对话框统一规范、组件职责、嵌套弹窗互操作 |
 | Phase 3 实施方案 | `docs/spec/13-phase3-implementation.md` | 流程引擎 + Mock Agent 实施细节 |
 | Phase 4 实施方案 | `docs/spec/14-phase4-agent-implementation.md` | 真实 Agent 调用（Docker 容器化）实施细节 |
 

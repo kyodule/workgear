@@ -2,14 +2,7 @@ import { useState, useEffect } from 'react'
 import { Play } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Workflow } from '@/lib/types'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { DraggableResizableDialog } from '@/components/draggable-resizable-dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import {
@@ -89,45 +82,16 @@ export function StartFlowDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>启动任务流程</DialogTitle>
-          <DialogDescription>
-            选择一个流程模板来启动此任务
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-4">
-          {loading ? (
-            <p className="text-sm text-muted-foreground">加载中...</p>
-          ) : workflows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              暂无可用流程，请先在项目中创建流程
-            </p>
-          ) : (
-            <div className="space-y-2">
-              <Label htmlFor="workflow">选择流程</Label>
-              <Select
-                value={selectedWorkflowId}
-                onValueChange={setSelectedWorkflowId}
-              >
-                <SelectTrigger id="workflow">
-                  <SelectValue placeholder="选择流程" />
-                </SelectTrigger>
-                <SelectContent>
-                  {workflows.map((workflow) => (
-                    <SelectItem key={workflow.id} value={workflow.id}>
-                      {workflow.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-        </div>
-
-        <DialogFooter>
+    <DraggableResizableDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="启动任务流程"
+      defaultWidth={480}
+      defaultHeight={300}
+      minWidth={400}
+      minHeight={240}
+      footer={
+        <>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             取消
           </Button>
@@ -138,8 +102,37 @@ export function StartFlowDialog({
             <Play className="mr-2 h-4 w-4" />
             {submitting ? '启动中...' : '启动'}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {loading ? (
+          <p className="text-sm text-muted-foreground">加载中...</p>
+        ) : workflows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            暂无可用流程，请先在项目中创建流程
+          </p>
+        ) : (
+          <div className="space-y-2">
+            <Label htmlFor="workflow">选择流程</Label>
+            <Select
+              value={selectedWorkflowId}
+              onValueChange={setSelectedWorkflowId}
+            >
+              <SelectTrigger id="workflow">
+                <SelectValue placeholder="选择流程" />
+              </SelectTrigger>
+              <SelectContent>
+                {workflows.map((workflow) => (
+                  <SelectItem key={workflow.id} value={workflow.id}>
+                    {workflow.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
+    </DraggableResizableDialog>
   )
 }

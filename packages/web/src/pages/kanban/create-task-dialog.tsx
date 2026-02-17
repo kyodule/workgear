@@ -3,14 +3,7 @@ import { useForm } from 'react-hook-form'
 import { api } from '@/lib/api'
 import type { CreateTaskDto, Task } from '@/lib/types'
 import { useKanbanStore } from '@/stores/kanban-store'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { DraggableResizableDialog } from '@/components/draggable-resizable-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -52,43 +45,45 @@ export function CreateTaskDialog({ open, onOpenChange, projectId, columnId, onSu
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>新建任务</DialogTitle>
-          <DialogDescription>创建一个新的任务</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="title">任务标题 *</Label>
-              <Input
-                id="title"
-                placeholder="任务标题"
-                {...register('title', { required: '任务标题不能为空' })}
-              />
-              {errors.title && <p className="text-sm text-destructive">{errors.title.message}</p>}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">描述</Label>
-              <Textarea
-                id="description"
-                placeholder="任务描述（可选）"
-                rows={4}
-                {...register('description')}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              取消
-            </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? '创建中...' : '创建'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <DraggableResizableDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="新建任务"
+      defaultWidth={480}
+      defaultHeight={360}
+      minWidth={400}
+      minHeight={280}
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            取消
+          </Button>
+          <Button type="submit" form="create-task-form" disabled={loading}>
+            {loading ? '创建中...' : '创建'}
+          </Button>
+        </>
+      }
+    >
+      <form id="create-task-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="title">任务标题 *</Label>
+          <Input
+            id="title"
+            placeholder="任务标题"
+            {...register('title', { required: '任务标题不能为空' })}
+          />
+          {errors.title && <p className="text-sm text-destructive">{errors.title.message}</p>}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="description">描述</Label>
+          <Textarea
+            id="description"
+            placeholder="任务描述（可选）"
+            rows={4}
+            {...register('description')}
+          />
+        </div>
+      </form>
+    </DraggableResizableDialog>
   )
 }

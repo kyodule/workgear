@@ -15,14 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { DraggableResizableDialog } from '@/components/draggable-resizable-dialog'
 
 const NONE_VALUE = '__none__'
 
@@ -445,107 +438,16 @@ function CreateRoleDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>新建 Agent 角色</DialogTitle>
-          <DialogDescription>创建自定义 Agent 角色，配置 Provider、Model 和 System Prompt</DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-2">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Slug (唯一标识)</Label>
-              <Input
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                className="mt-1"
-                placeholder="my-custom-role"
-              />
-            </div>
-            <div>
-              <Label>名称</Label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="mt-1"
-                placeholder="自定义角色"
-              />
-            </div>
-          </div>
-
-          <div>
-            <Label>描述</Label>
-            <Input
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="mt-1"
-              placeholder="角色描述"
-            />
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <Label>Agent 类型</Label>
-              <Select value={agentType} onValueChange={(v) => { setAgentType(v); setProviderId(NONE_VALUE); setModelId(NONE_VALUE) }}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(agentTypes).map(([key, def]) => (
-                    <SelectItem key={key} value={key}>
-                      {def.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Provider</Label>
-              <Select value={providerId} onValueChange={(v) => { setProviderId(v); setModelId(NONE_VALUE) }}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE_VALUE}>使用默认</SelectItem>
-                  {filteredProviders.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name} {p.isDefault ? '(默认)' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Model</Label>
-              <Select value={modelId} onValueChange={setModelId}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE_VALUE}>使用默认</SelectItem>
-                  {filteredModels.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.displayName || m.modelName} {m.isDefault ? '(默认)' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div>
-            <Label>System Prompt</Label>
-            <Textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              className="mt-1 min-h-[120px] font-mono text-sm"
-              placeholder="你是一个..."
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
+    <DraggableResizableDialog
+      open={open}
+      onOpenChange={handleClose}
+      title="新建 Agent 角色"
+      defaultWidth={640}
+      defaultHeight={560}
+      minWidth={520}
+      minHeight={440}
+      footer={
+        <>
           <Button variant="outline" onClick={() => handleClose(false)}>
             取消
           </Button>
@@ -565,9 +467,102 @@ function CreateRoleDialog({
           >
             {saving ? '创建中...' : '创建'}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label>Slug (唯一标识)</Label>
+            <Input
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+              className="mt-1"
+              placeholder="my-custom-role"
+            />
+          </div>
+          <div>
+            <Label>名称</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="mt-1"
+              placeholder="自定义角色"
+            />
+          </div>
+        </div>
+
+        <div>
+          <Label>描述</Label>
+          <Input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="mt-1"
+            placeholder="角色描述"
+          />
+        </div>
+
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <Label>Agent 类型</Label>
+            <Select value={agentType} onValueChange={(v) => { setAgentType(v); setProviderId(NONE_VALUE); setModelId(NONE_VALUE) }}>
+              <SelectTrigger className="mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(agentTypes).map(([key, def]) => (
+                  <SelectItem key={key} value={key}>
+                    {def.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Provider</Label>
+            <Select value={providerId} onValueChange={(v) => { setProviderId(v); setModelId(NONE_VALUE) }}>
+              <SelectTrigger className="mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE_VALUE}>使用默认</SelectItem>
+                {filteredProviders.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name} {p.isDefault ? '(默认)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Model</Label>
+            <Select value={modelId} onValueChange={setModelId}>
+              <SelectTrigger className="mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE_VALUE}>使用默认</SelectItem>
+                {filteredModels.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.displayName || m.modelName} {m.isDefault ? '(默认)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div>
+          <Label>System Prompt</Label>
+          <Textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            className="mt-1 min-h-[120px] font-mono text-sm"
+            placeholder="你是一个..."
+          />
+        </div>
+      </div>
+    </DraggableResizableDialog>
   )
 }
 
@@ -618,73 +613,73 @@ function TestAgentDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>测试 Agent 角色: {role.name}</DialogTitle>
-          <DialogDescription>
-            输入测试提示词，验证 Agent 配置是否正常工作
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="flex-1 overflow-y-auto space-y-4 py-2">
-          <div>
-            <Label>测试提示词</Label>
-            <Textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              className="mt-1 min-h-[80px] font-mono text-sm"
-              placeholder='Echo "Agent test successful" and exit'
-              disabled={testing}
-            />
-          </div>
-
-          {testing && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              执行中...
-            </div>
-          )}
-
-          {logs.length > 0 && (
-            <div>
-              <Label>执行日志</Label>
-              <div className="mt-1 bg-muted rounded-md p-3 font-mono text-xs max-h-[300px] overflow-y-auto">
-                {logs.map((log, i) => (
-                  <div key={i} className="whitespace-pre-wrap">{log}</div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {result && (
-            <div>
-              <Label className="text-green-600">执行成功</Label>
-              <div className="mt-1 bg-green-50 border border-green-200 rounded-md p-3 text-sm">
-                <pre className="whitespace-pre-wrap">{JSON.stringify(result, null, 2)}</pre>
-              </div>
-            </div>
-          )}
-
-          {error && (
-            <div>
-              <Label className="text-destructive">执行失败</Label>
-              <div className="mt-1 bg-destructive/10 border border-destructive/20 rounded-md p-3 text-sm text-destructive">
-                {error}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <DialogFooter>
+    <DraggableResizableDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`测试 Agent 角色: ${role.name}`}
+      defaultWidth={720}
+      defaultHeight={560}
+      minWidth={560}
+      minHeight={400}
+      footer={
+        <>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             关闭
           </Button>
           <Button disabled={testing || !prompt.trim()} onClick={handleTest}>
             {testing ? '执行中...' : '开始测试'}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div>
+          <Label>测试提示词</Label>
+          <Textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            className="mt-1 min-h-[80px] font-mono text-sm"
+            placeholder='Echo "Agent test successful" and exit'
+            disabled={testing}
+          />
+        </div>
+
+        {testing && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            执行中...
+          </div>
+        )}
+
+        {logs.length > 0 && (
+          <div>
+            <Label>执行日志</Label>
+            <div className="mt-1 bg-muted rounded-md p-3 font-mono text-xs max-h-[300px] overflow-y-auto">
+              {logs.map((log, i) => (
+                <div key={i} className="whitespace-pre-wrap">{log}</div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {result && (
+          <div>
+            <Label className="text-green-600">执行成功</Label>
+            <div className="mt-1 bg-green-50 border border-green-200 rounded-md p-3 text-sm">
+              <pre className="whitespace-pre-wrap">{JSON.stringify(result, null, 2)}</pre>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div>
+            <Label className="text-destructive">执行失败</Label>
+            <div className="mt-1 bg-destructive/10 border border-destructive/20 rounded-md p-3 text-sm text-destructive">
+              {error}
+            </div>
+          </div>
+        )}
+      </div>
+    </DraggableResizableDialog>
   )
 }

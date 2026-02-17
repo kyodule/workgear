@@ -15,14 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { DraggableResizableDialog } from '@/components/draggable-resizable-dialog'
 
 export function AgentConfigPage() {
   const [agentTypes, setAgentTypes] = useState<Record<string, AgentTypeDefinition>>({})
@@ -379,76 +372,78 @@ function ProviderDialog({
   if (!agentTypeDef) return null
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{provider ? '编辑' : '添加'} Provider</DialogTitle>
-          <DialogDescription>{agentTypeDef.name}</DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-2">
-          <div>
-            <Label>Provider 名称</Label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="mt-1"
-              placeholder="例如：Anthropic 官方"
-            />
-          </div>
-
-          {agentTypeDef.providerFields.map((field) => (
-            <div key={field.key}>
-              <Label>{field.label}</Label>
-              {field.type === 'select' ? (
-                <Select
-                  value={config[field.key] || ''}
-                  onValueChange={(v) => setConfig({ ...config, [field.key]: v })}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {field.options?.map((opt) => (
-                      <SelectItem key={opt} value={opt}>
-                        {opt}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Input
-                  type={field.type === 'secret' ? 'password' : 'text'}
-                  value={config[field.key] || ''}
-                  onChange={(e) => setConfig({ ...config, [field.key]: e.target.value })}
-                  className="mt-1"
-                  placeholder={field.placeholder}
-                />
-              )}
-            </div>
-          ))}
-
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="is-default"
-              checked={isDefault}
-              onChange={(e) => setIsDefault(e.target.checked)}
-            />
-            <Label htmlFor="is-default">设为默认 Provider</Label>
-          </div>
-        </div>
-
-        <DialogFooter>
+    <DraggableResizableDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`${provider ? '编辑' : '添加'} Provider - ${agentTypeDef.name}`}
+      defaultWidth={560}
+      defaultHeight={480}
+      minWidth={440}
+      minHeight={360}
+      footer={
+        <>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             取消
           </Button>
           <Button disabled={saving} onClick={handleSave}>
             {saving ? '保存中...' : '保存'}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div>
+          <Label>Provider 名称</Label>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="mt-1"
+            placeholder="例如：Anthropic 官方"
+          />
+        </div>
+
+        {agentTypeDef.providerFields.map((field) => (
+          <div key={field.key}>
+            <Label>{field.label}</Label>
+            {field.type === 'select' ? (
+              <Select
+                value={config[field.key] || ''}
+                onValueChange={(v) => setConfig({ ...config, [field.key]: v })}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {field.options?.map((opt) => (
+                    <SelectItem key={opt} value={opt}>
+                      {opt}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                type={field.type === 'secret' ? 'password' : 'text'}
+                value={config[field.key] || ''}
+                onChange={(e) => setConfig({ ...config, [field.key]: e.target.value })}
+                className="mt-1"
+                placeholder={field.placeholder}
+              />
+            )}
+          </div>
+        ))}
+
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="is-default"
+            checked={isDefault}
+            onChange={(e) => setIsDefault(e.target.checked)}
+          />
+          <Label htmlFor="is-default">设为默认 Provider</Label>
+        </div>
+      </div>
+    </DraggableResizableDialog>
   )
 }
 
@@ -499,54 +494,56 @@ function ModelDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>添加 Model</DialogTitle>
-          <DialogDescription>手动输入 Model 名称</DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-2">
-          <div>
-            <Label>Model 名称</Label>
-            <Input
-              value={modelName}
-              onChange={(e) => setModelName(e.target.value)}
-              className="mt-1"
-              placeholder="例如：claude-sonnet-4"
-            />
-          </div>
-
-          <div>
-            <Label>显示名称（可选）</Label>
-            <Input
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              className="mt-1"
-              placeholder="例如：Claude Sonnet 4"
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="model-default"
-              checked={isDefault}
-              onChange={(e) => setIsDefault(e.target.checked)}
-            />
-            <Label htmlFor="model-default">设为默认 Model</Label>
-          </div>
-        </div>
-
-        <DialogFooter>
+    <DraggableResizableDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="添加 Model"
+      defaultWidth={480}
+      defaultHeight={320}
+      minWidth={400}
+      minHeight={280}
+      footer={
+        <>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             取消
           </Button>
           <Button disabled={saving} onClick={handleSave}>
             {saving ? '添加中...' : '添加'}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div>
+          <Label>Model 名称</Label>
+          <Input
+            value={modelName}
+            onChange={(e) => setModelName(e.target.value)}
+            className="mt-1"
+            placeholder="例如：claude-sonnet-4"
+          />
+        </div>
+
+        <div>
+          <Label>显示名称（可选）</Label>
+          <Input
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            className="mt-1"
+            placeholder="例如：Claude Sonnet 4"
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="model-default"
+            checked={isDefault}
+            onChange={(e) => setIsDefault(e.target.checked)}
+          />
+          <Label htmlFor="model-default">设为默认 Model</Label>
+        </div>
+      </div>
+    </DraggableResizableDialog>
   )
 }
