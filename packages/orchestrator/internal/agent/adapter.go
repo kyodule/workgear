@@ -20,6 +20,10 @@ type AgentRequest struct {
 	GitBranch       string         `json:"git_branch"`
 	GitRepoURL      string         `json:"git_repo_url"`
 	GitAccessToken  string         `json:"git_access_token"`
+	GitProviderType string         `json:"git_provider_type"` // github, gitlab, generic
+	GitBaseUrl      string         `json:"git_base_url"`      // custom base URL for self-hosted
+	GitUsername     string         `json:"git_username"`       // for generic Git auth
+	GitPassword     string         `json:"git_password"`       // for generic Git auth
 	TaskTitle       string         `json:"task_title"`
 	NodeName        string         `json:"node_name"`
 	RolePrompt      string         `json:"role_prompt"`

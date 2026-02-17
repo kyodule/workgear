@@ -8,7 +8,7 @@ import fs from 'fs/promises'
 import path from 'path'
 import os from 'os'
 import { authenticate } from '../middleware/auth.js'
-import { GitHubProvider } from '../lib/github-provider.js'
+import { createGitProvider } from '../lib/git-provider-factory.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -144,7 +144,6 @@ export async function openspecRoutes(app: FastifyInstance) {
     const project = await getProject(projectId)
     if (!project) return reply.status(404).send({ error: 'Project not found' })
     if (!project.gitRepoUrl) return reply.status(400).send({ error: 'Project has no Git repo configured' })
-    if (!project.gitAccessToken) return reply.status(400).send({ error: 'Project has no Git access token configured' })
     
     const repoUrl = getAuthenticatedRepoUrl(project)!
     const fullPath = `openspec/changes/${changeName}/${artifactPath}`
@@ -157,9 +156,7 @@ export async function openspecRoutes(app: FastifyInstance) {
         fullPath,
         content,
         msg,
-        project.gitRepoUrl,
-        project.gitAccessToken,
-        project.autoMergePr
+        project
       )
       return { 
         success: true, 
@@ -185,20 +182,44 @@ async function getProject(projectId: string) {
 }
 
 /**
- * Get the authenticated Git repo URL by injecting access token into HTTPS URL.
+ * Get the authenticated Git repo URL by injecting credentials into HTTPS URL.
+ * Supports: token-based (GitHub/GitLab) and username/password (generic Git).
  */
-function getAuthenticatedRepoUrl(project: { gitRepoUrl: string | null; gitAccessToken: string | null }): string | null {
+function getAuthenticatedRepoUrl(project: {
+  gitRepoUrl: string | null
+  gitProviderType: string
+  gitAccessToken: string | null
+  gitUsername: string | null
+  gitPassword: string | null
+}): string | null {
   if (!project.gitRepoUrl) return null
-  if (!project.gitAccessToken) return project.gitRepoUrl
   const url = project.gitRepoUrl
   if (!url.toLowerCase().startsWith('https://')) return url
+
+  // Strip existing credentials from URL
   const rest = url.slice('https://'.length)
   const atIdx = rest.indexOf('@')
   const slashIdx = rest.indexOf('/')
-  // If @ exists before the first /, strip existing credentials
   const host = (atIdx >= 0 && (slashIdx < 0 || atIdx < slashIdx))
     ? rest.slice(atIdx + 1)
     : rest
+
+  if (project.gitProviderType === 'generic') {
+    // Username/password authentication
+    if (project.gitUsername && project.gitPassword) {
+      const encodedUser = encodeURIComponent(project.gitUsername)
+      const encodedPass = encodeURIComponent(project.gitPassword)
+      return `https://${encodedUser}:${encodedPass}@${host}`
+    }
+    return url
+  }
+
+  // Token-based authentication (GitHub/GitLab)
+  if (!project.gitAccessToken) return url
+  // GitLab requires oauth2:TOKEN@ format for personal access tokens
+  if (project.gitProviderType === 'gitlab') {
+    return `https://oauth2:${project.gitAccessToken}@${host}`
+  }
   return `https://${project.gitAccessToken}@${host}`
 }
 
@@ -253,9 +274,15 @@ async function updateGitFileWithPR(
   filePath: string,
   content: string,
   commitMessage: string,
-  rawRepoUrl: string,
-  accessToken: string,
-  autoMerge: boolean = false
+  project: {
+    gitRepoUrl: string | null
+    gitProviderType: string
+    gitAccessToken: string | null
+    gitBaseUrl: string | null
+    gitUsername: string | null
+    gitPassword: string | null
+    autoMergePr: boolean
+  }
 ): Promise<{ prUrl?: string; prNumber?: number; merged?: boolean; mergeError?: string }> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'workgear-git-'))
   try {
@@ -280,12 +307,23 @@ async function updateGitFileWithPR(
     await execFileAsync('git', ['commit', '-m', commitMessage], { cwd: tmpDir })
     await execFileAsync('git', ['push', 'origin', featureBranch], { cwd: tmpDir, timeout: 30000 })
 
-    // Create PR via GitHub API
-    const provider = new GitHubProvider(accessToken)
-    const repoInfo = provider.parseRepoUrl(rawRepoUrl)
-    
+    // Create PR via provider API
+    const provider = createGitProvider({
+      providerType: project.gitProviderType,
+      accessToken: project.gitAccessToken,
+      baseUrl: project.gitBaseUrl,
+      username: project.gitUsername,
+      password: project.gitPassword,
+    })
+
+    if (!provider.supportsPullRequests) {
+      // Generic Git provider: no PR support, just return success
+      return { merged: false }
+    }
+
+    const repoInfo = project.gitRepoUrl ? provider.parseRepoUrl(project.gitRepoUrl) : null
     if (!repoInfo) {
-      throw new Error(`Could not parse GitHub repo from URL: ${rawRepoUrl}`)
+      throw new Error(`Could not parse repo from URL: ${project.gitRepoUrl}`)
     }
 
     const prResult = await provider.createPullRequest({
@@ -298,7 +336,7 @@ async function updateGitFileWithPR(
     })
 
     // Auto-merge if enabled
-    if (autoMerge) {
+    if (project.autoMergePr) {
       const mergeResult = await provider.mergePullRequest({
         owner: repoInfo.owner,
         repo: repoInfo.repo,
@@ -307,7 +345,7 @@ async function updateGitFileWithPR(
         commitTitle: `[WorkGear] ${commitMessage}`,
       })
 
-      if (mergeResult.merged) {
+      if (mergeResult.merged && provider.deleteBranch) {
         // Clean up feature branch after successful merge
         await provider.deleteBranch(repoInfo.owner, repoInfo.repo, featureBranch).catch(() => {})
       }

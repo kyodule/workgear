@@ -416,6 +416,100 @@ create_github_pr() {
     fi
 }
 
+# ─── Helper: Create GitLab MR ───
+create_gitlab_mr() {
+    local FEATURE_BRANCH="$1"
+    local BASE_BRANCH="$2"
+    local MR_TITLE="$3"
+    local MR_BODY="$4"
+
+    log_info "Creating GitLab MR: $FEATURE_BRANCH -> $BASE_BRANCH"
+
+    # Determine GitLab base URL
+    local GITLAB_URL="${GIT_BASE_URL:-https://gitlab.com}"
+
+    # Extract owner/repo from GIT_REPO_URL
+    local REPO_PATH=$(echo "$GIT_REPO_URL" | sed -E 's|^https?://([^@]*@)?[^/]+/||' | sed 's|\.git$||')
+
+    if [ -z "$REPO_PATH" ]; then
+        log_info "Warning: Could not parse project path from $GIT_REPO_URL, skipping MR creation"
+        return 0
+    fi
+
+    # URL-encode the project path (owner/repo → owner%2Frepo)
+    local PROJECT_ID=$(echo "$REPO_PATH" | sed 's|/|%2F|g')
+
+    # Get token
+    local TOKEN=""
+    if [ -n "$GIT_ACCESS_TOKEN" ]; then
+        TOKEN="$GIT_ACCESS_TOKEN"
+    fi
+
+    if [ -z "$TOKEN" ]; then
+        log_info "Warning: No access token found, skipping MR creation"
+        return 0
+    fi
+
+    # Call GitLab API
+    local API_URL="${GITLAB_URL}/api/v4/projects/${PROJECT_ID}/merge_requests"
+    local RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$API_URL" \
+        -H "PRIVATE-TOKEN: $TOKEN" \
+        -H "Content-Type: application/json" \
+        -d "{\"source_branch\":\"$FEATURE_BRANCH\",\"target_branch\":\"$BASE_BRANCH\",\"title\":\"$MR_TITLE\",\"description\":\"$MR_BODY\"}")
+
+    local HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+    local BODY=$(echo "$RESPONSE" | sed '$d')
+
+    if [ "$HTTP_CODE" = "201" ]; then
+        local MR_URL=$(echo "$BODY" | jq -r '.web_url')
+        local MR_IID=$(echo "$BODY" | jq -r '.iid')
+        log_info "MR created successfully: $MR_URL (!$MR_IID)"
+        echo "$MR_URL" > /output/pr_url.txt
+        echo "$MR_IID" > /output/pr_number.txt
+    elif [ "$HTTP_CODE" = "409" ]; then
+        log_info "MR already exists (409), looking up existing MR..."
+        local SEARCH_URL="${GITLAB_URL}/api/v4/projects/${PROJECT_ID}/merge_requests?source_branch=${FEATURE_BRANCH}&target_branch=${BASE_BRANCH}&state=opened"
+        local SEARCH_RESP=$(curl -s "$SEARCH_URL" \
+            -H "PRIVATE-TOKEN: $TOKEN")
+        local EXISTING_MR_URL=$(echo "$SEARCH_RESP" | jq -r '.[0].web_url // empty')
+        local EXISTING_MR_IID=$(echo "$SEARCH_RESP" | jq -r '.[0].iid // empty')
+        if [ -n "$EXISTING_MR_URL" ]; then
+            log_info "Found existing MR: $EXISTING_MR_URL (!$EXISTING_MR_IID)"
+            echo "$EXISTING_MR_URL" > /output/pr_url.txt
+            echo "$EXISTING_MR_IID" > /output/pr_number.txt
+        fi
+    else
+        log_info "Warning: Failed to create MR (HTTP $HTTP_CODE), but branch was pushed successfully"
+        log_info "Response: $BODY"
+    fi
+}
+
+# ─── Helper: Create PR/MR based on provider type ───
+create_pr_or_mr() {
+    local FEATURE_BRANCH="$1"
+    local BASE_BRANCH="$2"
+    local TITLE="$3"
+    local BODY="$4"
+
+    local PROVIDER="${GIT_PROVIDER_TYPE:-github}"
+
+    case "$PROVIDER" in
+        github)
+            create_github_pr "$FEATURE_BRANCH" "$BASE_BRANCH" "$TITLE" "$BODY"
+            ;;
+        gitlab)
+            create_gitlab_mr "$FEATURE_BRANCH" "$BASE_BRANCH" "$TITLE" "$BODY"
+            ;;
+        generic)
+            log_info "Generic Git provider — PR/MR creation not supported, skipping"
+            ;;
+        *)
+            log_info "Unknown Git provider type: $PROVIDER, trying GitHub API..."
+            create_github_pr "$FEATURE_BRANCH" "$BASE_BRANCH" "$TITLE" "$BODY"
+            ;;
+    esac
+}
+
 # ─── Step 3: Git commit & push (execute / opsx modes) ───
 SHOULD_PUSH="false"
 if [ "$AGENT_MODE" = "execute" ] || [ "$AGENT_MODE" = "opsx_plan" ] || [ "$AGENT_MODE" = "opsx_apply" ]; then
@@ -468,10 +562,10 @@ if [ "$SHOULD_PUSH" = "true" ] && [ -n "$GIT_REPO_URL" ]; then
         git push origin "$FEATURE_BRANCH" --force 2>&1
         log_info "Changes pushed successfully to $FEATURE_BRANCH"
 
-        # Create PR if requested
+        # Create PR/MR if requested
         if [ "$GIT_CREATE_PR" = "true" ]; then
             PR_TITLE="${GIT_PR_TITLE:-$COMMIT_MSG}"
-            create_github_pr "$FEATURE_BRANCH" "$BASE_BRANCH" "$PR_TITLE" "$COMMIT_MSG"
+            create_pr_or_mr "$FEATURE_BRANCH" "$BASE_BRANCH" "$PR_TITLE" "$COMMIT_MSG"
         fi
 
         # ─── Record Git metadata ───

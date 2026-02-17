@@ -101,7 +101,7 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 	}
 
 	// Get git information from task (full version with access token and title)
-	gitRepoURL, gitBranch, gitAccessToken, taskTitle, err := e.db.GetTaskGitInfoFull(ctx, flowRun.TaskID)
+	gitRepoURL, gitBranch, gitAccessToken, taskTitle, gitProviderType, gitBaseUrl, gitUsername, gitPassword, err := e.db.GetTaskGitInfoFull(ctx, flowRun.TaskID)
 	if err != nil {
 		e.logger.Warnw("Failed to get git info", "error", err)
 	}
@@ -118,20 +118,24 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 	inputCtx["_role"] = role
 
 	agentReq := &agent.AgentRequest{
-		TaskID:         nodeRun.ID,
-		FlowRunID:     nodeRun.FlowRunID,
-		NodeID:         nodeRun.NodeID,
-		Mode:           mode,
-		Prompt:         prompt,
-		Context:        inputCtx,
-		GitRepoURL:     gitRepoURL,
-		GitBranch:      gitBranch,
-		GitAccessToken: gitAccessToken,
-		TaskTitle:      taskTitle,
-		NodeName:       ptrStr(nodeRun.NodeName),
-		RolePrompt:     rolePrompt,
-		Feedback:       feedback,
-		Model:          model,
+		TaskID:          nodeRun.ID,
+		FlowRunID:       nodeRun.FlowRunID,
+		NodeID:          nodeRun.NodeID,
+		Mode:            mode,
+		Prompt:          prompt,
+		Context:         inputCtx,
+		GitRepoURL:      gitRepoURL,
+		GitBranch:       gitBranch,
+		GitAccessToken:  gitAccessToken,
+		GitProviderType: gitProviderType,
+		GitBaseUrl:      gitBaseUrl,
+		GitUsername:     gitUsername,
+		GitPassword:     gitPassword,
+		TaskTitle:       taskTitle,
+		NodeName:        ptrStr(nodeRun.NodeName),
+		RolePrompt:      rolePrompt,
+		Feedback:        feedback,
+		Model:           model,
 	}
 
 	// Resolve OpenSpec config for opsx_plan / opsx_apply modes

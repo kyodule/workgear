@@ -5,7 +5,7 @@ import { flowRuns, nodeRuns, tasks, workflows, timelineEvents, projects, artifac
 import { parse } from 'yaml'
 import * as orchestrator from '../grpc/client.js'
 import { authenticate } from '../middleware/auth.js'
-import { GitHubProvider } from '../lib/github-provider.js'
+import { createGitProvider } from '../lib/git-provider-factory.js'
 
 export async function flowRunRoutes(app: FastifyInstance) {
   // 所有流程执行路由都需要登录
@@ -203,21 +203,33 @@ export async function flowRunRoutes(app: FastifyInstance) {
     }
 
     const [project] = await db.select().from(projects).where(eq(projects.id, task.projectId))
-    if (!project?.gitAccessToken || !project.gitRepoUrl) {
+    if (!project?.gitRepoUrl) {
       return reply.status(422).send({ error: 'Project missing Git configuration' })
     }
 
-    const provider = new GitHubProvider(project.gitAccessToken)
+    const provider = createGitProvider({
+      providerType: project.gitProviderType,
+      accessToken: project.gitAccessToken,
+      baseUrl: project.gitBaseUrl,
+      username: project.gitUsername,
+      password: project.gitPassword,
+    })
+
+    if (!provider.supportsPullRequests) {
+      return reply.status(422).send({ error: 'Git provider does not support pull request operations' })
+    }
+
     const repoInfo = provider.parseRepoUrl(project.gitRepoUrl)
     if (!repoInfo) {
       return reply.status(422).send({ error: 'Cannot parse repo URL' })
     }
 
+    const mergeMethod = (project.gitMergeMethod as 'merge' | 'squash' | 'rebase') || 'squash'
     const mergeResult = await provider.mergePullRequest({
       owner: repoInfo.owner,
       repo: repoInfo.repo,
       pullNumber: flowRun.prNumber,
-      mergeMethod: 'squash',
+      mergeMethod,
       commitTitle: task.title,
     })
 
@@ -239,7 +251,7 @@ export async function flowRunRoutes(app: FastifyInstance) {
       })
 
       // 删除 feature branch
-      if (flowRun.branchName) {
+      if (flowRun.branchName && provider.deleteBranch) {
         await provider.deleteBranch(repoInfo.owner, repoInfo.repo, flowRun.branchName).catch(() => {})
       }
 

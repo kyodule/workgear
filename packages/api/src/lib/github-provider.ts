@@ -1,6 +1,8 @@
 import type { GitProvider, CreatePullRequestParams, PullRequestResult, MergePullRequestParams, MergePullRequestResult } from './git-provider.js'
 
 export class GitHubProvider implements GitProvider {
+  readonly supportsPullRequests = true
+
   constructor(private token: string) {}
 
   async createPullRequest(params: CreatePullRequestParams): Promise<PullRequestResult> {

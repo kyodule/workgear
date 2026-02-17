@@ -105,9 +105,23 @@ func (a *ClaudeCodeAdapter) BuildRequest(ctx context.Context, req *AgentRequest)
 	// PR title: pure task title (no [Agent] prefix, no node name)
 	env["GIT_PR_TITLE"] = req.TaskTitle
 
-	// Access token (for GitHub API)
+	// Access token (for GitHub/GitLab API)
 	if req.GitAccessToken != "" {
 		env["GIT_ACCESS_TOKEN"] = req.GitAccessToken
+	}
+
+	// Git provider info
+	if req.GitProviderType != "" {
+		env["GIT_PROVIDER_TYPE"] = req.GitProviderType
+	}
+	if req.GitBaseUrl != "" {
+		env["GIT_BASE_URL"] = req.GitBaseUrl
+	}
+	if req.GitUsername != "" {
+		env["GIT_USERNAME"] = req.GitUsername
+	}
+	if req.GitPassword != "" {
+		env["GIT_PASSWORD"] = req.GitPassword
 	}
 
 	// Skip Git operations for generate_change_name mode

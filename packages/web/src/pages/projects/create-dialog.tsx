@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { api } from '@/lib/api'
-import type { Project, GitMergeMethod } from '@/lib/types'
+import type { Project, GitMergeMethod, GitProviderType } from '@/lib/types'
 import { useProjectStore } from '@/stores/project-store'
 import { DraggableResizableDialog } from '@/components/draggable-resizable-dialog'
 import { Button } from '@/components/ui/button'
@@ -21,7 +21,11 @@ interface CreateProjectForm {
   name: string
   description?: string
   gitRepoUrl?: string
+  gitProviderType: GitProviderType
+  gitBaseUrl?: string
   gitAccessToken?: string
+  gitUsername?: string
+  gitPassword?: string
   autoMergePr: boolean
   gitMergeMethod: GitMergeMethod
   visibility: 'private' | 'public'
@@ -31,12 +35,25 @@ export function CreateProjectDialog({ open, onOpenChange, onSuccess }: CreatePro
   const { addProject } = useProjectStore()
   const [loading, setLoading] = useState(false)
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<CreateProjectForm>({
-    defaultValues: { visibility: 'private', autoMergePr: false, gitMergeMethod: 'merge' }
+    defaultValues: { visibility: 'private', autoMergePr: false, gitMergeMethod: 'merge', gitProviderType: 'github' }
   })
 
   const visibility = watch('visibility')
   const autoMergePr = watch('autoMergePr')
   const gitMergeMethod = watch('gitMergeMethod')
+  const gitProviderType = watch('gitProviderType')
+
+  // Auto-detect provider type from repo URL
+  function handleRepoUrlChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const url = e.target.value.toLowerCase()
+    if (url.includes('github.com')) {
+      setValue('gitProviderType', 'github')
+    } else if (url.includes('gitlab.com') || url.includes('gitlab')) {
+      setValue('gitProviderType', 'gitlab')
+    } else if (url.length > 10) {
+      setValue('gitProviderType', 'generic')
+    }
+  }
 
   async function onSubmit(data: CreateProjectForm) {
     setLoading(true)
@@ -109,21 +126,72 @@ export function CreateProjectDialog({ open, onOpenChange, onSuccess }: CreatePro
           <Input
             id="gitRepoUrl"
             placeholder="https://github.com/user/repo.git"
-            {...register('gitRepoUrl')}
+            {...register('gitRepoUrl', { onChange: handleRepoUrlChange })}
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="gitAccessToken">Git Access Token</Label>
-          <Input
-            id="gitAccessToken"
-            type="password"
-            placeholder="ghp_xxxx 或 glpat-xxxx"
-            {...register('gitAccessToken')}
-          />
+          <Label htmlFor="gitProviderType">Git 平台</Label>
+          <Select value={gitProviderType} onValueChange={(v) => setValue('gitProviderType', v as GitProviderType)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="github">GitHub</SelectItem>
+              <SelectItem value="gitlab">GitLab</SelectItem>
+              <SelectItem value="generic">通用 Git（用户名/密码）</SelectItem>
+            </SelectContent>
+          </Select>
           <p className="text-xs text-muted-foreground">
-            用于 Agent 自动提交代码，需要仓库写权限
+            根据仓库地址自动检测，也可手动选择
           </p>
         </div>
+        {gitProviderType === 'gitlab' && (
+          <div className="space-y-2">
+            <Label htmlFor="gitBaseUrl">GitLab 地址</Label>
+            <Input
+              id="gitBaseUrl"
+              placeholder="https://gitlab.com（自托管请填写实际地址）"
+              {...register('gitBaseUrl')}
+            />
+          </div>
+        )}
+        {gitProviderType !== 'generic' ? (
+          <div className="space-y-2">
+            <Label htmlFor="gitAccessToken">Git Access Token</Label>
+            <Input
+              id="gitAccessToken"
+              type="password"
+              placeholder={gitProviderType === 'github' ? 'ghp_xxxx' : 'glpat-xxxx'}
+              {...register('gitAccessToken')}
+            />
+            <p className="text-xs text-muted-foreground">
+              用于 Agent 自动提交代码和创建 PR/MR，需要仓库写权限
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="gitUsername">Git 用户名</Label>
+              <Input
+                id="gitUsername"
+                placeholder="用户名"
+                {...register('gitUsername')}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gitPassword">Git 密码</Label>
+              <Input
+                id="gitPassword"
+                type="password"
+                placeholder="密码或 Personal Access Token"
+                {...register('gitPassword')}
+              />
+              <p className="text-xs text-muted-foreground">
+                通用 Git 不支持自动创建 PR，仅支持 clone 和 push
+              </p>
+            </div>
+          </>
+        )}
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
             <Label htmlFor="autoMergePr">自动合并 PR</Label>

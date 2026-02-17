@@ -32,14 +32,15 @@ func (c *Client) GetFlowRun(ctx context.Context, id string) (*FlowRun, error) {
 // GetTaskGitInfo retrieves git repo URL and branch from a task
 func (c *Client) GetTaskGitInfo(ctx context.Context, taskID string) (repoURL string, branch string, err error) {
 	row := c.pool.QueryRow(ctx, `
-		SELECT p.git_repo_url, t.git_branch, p.git_access_token
+		SELECT p.git_repo_url, t.git_branch, p.git_access_token,
+		       p.git_provider_type, p.git_username, p.git_password
 		FROM tasks t
 		JOIN projects p ON t.project_id = p.id
 		WHERE t.id = $1
 	`, taskID)
 
-	var repoURLPtr, branchPtr, tokenPtr *string
-	if err := row.Scan(&repoURLPtr, &branchPtr, &tokenPtr); err != nil {
+	var repoURLPtr, branchPtr, tokenPtr, providerTypePtr, usernamePtr, passwordPtr *string
+	if err := row.Scan(&repoURLPtr, &branchPtr, &tokenPtr, &providerTypePtr, &usernamePtr, &passwordPtr); err != nil {
 		return "", "", fmt.Errorf("get task git info: %w", err)
 	}
 
@@ -50,49 +51,54 @@ func (c *Client) GetTaskGitInfo(ctx context.Context, taskID string) (repoURL str
 		branch = *branchPtr
 	}
 
-	// Inject access token into HTTPS URL: https://TOKEN@github.com/...
-	if tokenPtr != nil && *tokenPtr != "" && repoURL != "" {
-		repoURL = injectTokenIntoURL(repoURL, *tokenPtr)
+	// Inject credentials into HTTPS URL
+	providerType := "github"
+	if providerTypePtr != nil {
+		providerType = *providerTypePtr
+	}
+	if repoURL != "" {
+		if providerType == "generic" && usernamePtr != nil && passwordPtr != nil && *usernamePtr != "" && *passwordPtr != "" {
+			repoURL = injectUserPassIntoURL(repoURL, *usernamePtr, *passwordPtr)
+		} else if tokenPtr != nil && *tokenPtr != "" {
+			repoURL = injectTokenIntoURL(repoURL, *tokenPtr, providerType)
+		}
 	}
 
 	return repoURL, branch, nil
 }
 
-// GetTaskGitInfoFull retrieves git repo URL, branch, access token, and task title
-func (c *Client) GetTaskGitInfoFull(ctx context.Context, taskID string) (repoURL, branch, accessToken, taskTitle string, err error) {
+// GetTaskGitInfoFull retrieves git repo URL, branch, access token, task title, and provider info
+func (c *Client) GetTaskGitInfoFull(ctx context.Context, taskID string) (repoURL, branch, accessToken, taskTitle, providerType, gitBaseUrl, gitUsername, gitPassword string, err error) {
 	row := c.pool.QueryRow(ctx, `
-		SELECT p.git_repo_url, t.git_branch, p.git_access_token, COALESCE(t.title, '')
+		SELECT COALESCE(p.git_repo_url, ''), COALESCE(t.git_branch, ''), COALESCE(p.git_access_token, ''), COALESCE(t.title, ''),
+		       COALESCE(p.git_provider_type, 'github'), COALESCE(p.git_base_url, ''),
+		       COALESCE(p.git_username, ''), COALESCE(p.git_password, '')
 		FROM tasks t
 		JOIN projects p ON t.project_id = p.id
 		WHERE t.id = $1
 	`, taskID)
 
-	var repoURLPtr, branchPtr, tokenPtr *string
-	if err := row.Scan(&repoURLPtr, &branchPtr, &tokenPtr, &taskTitle); err != nil {
-		return "", "", "", "", fmt.Errorf("get task git info full: %w", err)
+	if err := row.Scan(&repoURL, &branch, &accessToken, &taskTitle,
+		&providerType, &gitBaseUrl, &gitUsername, &gitPassword); err != nil {
+		return "", "", "", "", "", "", "", "", fmt.Errorf("get task git info full: %w", err)
 	}
 
-	if repoURLPtr != nil {
-		repoURL = *repoURLPtr
-	}
-	if branchPtr != nil {
-		branch = *branchPtr
-	}
-	if tokenPtr != nil {
-		accessToken = *tokenPtr
-	}
-
-	// Inject access token into HTTPS URL for repoURL
-	if accessToken != "" && repoURL != "" {
-		repoURL = injectTokenIntoURL(repoURL, accessToken)
+	// Inject credentials into HTTPS URL for repoURL
+	if repoURL != "" {
+		if providerType == "generic" && gitUsername != "" && gitPassword != "" {
+			repoURL = injectUserPassIntoURL(repoURL, gitUsername, gitPassword)
+		} else if accessToken != "" {
+			repoURL = injectTokenIntoURL(repoURL, accessToken, providerType)
+		}
 	}
 
-	return repoURL, branch, accessToken, taskTitle, nil
+	return repoURL, branch, accessToken, taskTitle, providerType, gitBaseUrl, gitUsername, gitPassword, nil
 }
 
 // injectTokenIntoURL inserts an access token into an HTTPS git URL.
-// e.g. https://github.com/user/repo.git → https://TOKEN@github.com/user/repo.git
-func injectTokenIntoURL(rawURL, token string) string {
+// For GitHub:  https://github.com/user/repo.git → https://TOKEN@github.com/user/repo.git
+// For GitLab:  https://gitlab.com/user/repo.git → https://oauth2:TOKEN@gitlab.com/user/repo.git
+func injectTokenIntoURL(rawURL, token, providerType string) string {
 	const httpsPrefix = "https://"
 	if !strings.HasPrefix(strings.ToLower(rawURL), httpsPrefix) {
 		return rawURL // not HTTPS, return as-is (e.g. SSH URL)
@@ -102,7 +108,26 @@ func injectTokenIntoURL(rawURL, token string) string {
 	if atIdx := indexOf(rest, '@'); atIdx >= 0 {
 		rest = rest[atIdx+1:]
 	}
+	// GitLab requires oauth2:TOKEN@ format for personal access tokens
+	if providerType == "gitlab" {
+		return httpsPrefix + "oauth2:" + token + "@" + rest
+	}
 	return httpsPrefix + token + "@" + rest
+}
+
+// injectUserPassIntoURL inserts username:password into an HTTPS git URL.
+// e.g. https://git.example.com/repo.git → https://user:pass@git.example.com/repo.git
+func injectUserPassIntoURL(rawURL, username, password string) string {
+	const httpsPrefix = "https://"
+	if !strings.HasPrefix(strings.ToLower(rawURL), httpsPrefix) {
+		return rawURL // not HTTPS, return as-is
+	}
+	// If URL already contains @ (has credentials), replace them
+	rest := rawURL[len(httpsPrefix):]
+	if atIdx := indexOf(rest, '@'); atIdx >= 0 {
+		rest = rest[atIdx+1:]
+	}
+	return httpsPrefix + username + ":" + password + "@" + rest
 }
 
 func indexOf(s string, c byte) int {
