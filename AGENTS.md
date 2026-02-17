@@ -40,6 +40,8 @@ WorkGear 是一个 AI Agent 工作流编排平台，支持 ClaudeCode 等 Agent 
 - `Sheet` 内若打开 Portal 子弹窗（挂到 `document.body`），父 `Sheet` 必须 `modal={false}`。
 - 父 `SheetContent` 必须在 `onInteractOutside` 中对白名单子弹窗来源执行 `event.preventDefault()`，防止误关闭父层。
 - 日志类弹窗必须支持直接滚轮/触控板滚动，不允许“只能拖右侧滚动条”。
+- 在 `DraggableResizableDialog` 内使用 `Radix Select` 时，`SelectContent` 默认使用 `withPortal={false}`（就地渲染）。仅在明确验证无冲突后才允许 Portal 到 `document.body`，避免下拉层与自定义弹层的层级/事件冲突导致选项无法回显。
+- 对 `Radix Select` 的 `onValueChange` 必须做合法值校验：当回调值为 `''` 或非法值时直接忽略，禁止回退为默认首项（如 `private`/`github`）。这是已验证会导致“回显被重置到第一项”的根因之一。
 
 ### 架构约束
 

@@ -22,55 +22,98 @@ interface EditProjectForm {
   name: string
   description: string
   gitRepoUrl: string
-  gitProviderType: GitProviderType
   gitBaseUrl: string
   gitAccessToken: string
   gitUsername: string
   gitPassword: string
-  autoMergePr: boolean
-  gitMergeMethod: GitMergeMethod
-  visibility: 'private' | 'public'
+}
+
+function parseVisibility(value: string | null | undefined): 'private' | 'public' | null {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  if (normalized === 'public') return 'public'
+  if (normalized === 'private') return 'private'
+  return null
+}
+
+function normalizeVisibility(value: string | null | undefined): 'private' | 'public' {
+  return parseVisibility(value) ?? 'private'
+}
+
+function parseGitProviderType(value: string | null | undefined): GitProviderType | null {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  if (normalized === 'gitlab') return 'gitlab'
+  if (normalized === 'generic') return 'generic'
+  if (normalized === 'github') return 'github'
+  return null
+}
+
+function normalizeGitProviderType(value: string | null | undefined): GitProviderType {
+  return parseGitProviderType(value) ?? 'github'
+}
+
+function parseGitMergeMethod(value: string | null | undefined): GitMergeMethod | null {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  if (normalized === 'squash') return 'squash'
+  if (normalized === 'rebase') return 'rebase'
+  if (normalized === 'merge') return 'merge'
+  return null
+}
+
+function normalizeGitMergeMethod(value: string | null | undefined): GitMergeMethod {
+  return parseGitMergeMethod(value) ?? 'merge'
 }
 
 export function EditProjectDialog({ open, onOpenChange, project, onSuccess }: EditProjectDialogProps) {
   const { updateProject } = useProjectStore()
   const [loading, setLoading] = useState(false)
-  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<EditProjectForm>()
-
-  const visibility = watch('visibility')
-  const autoMergePr = watch('autoMergePr')
-  const gitMergeMethod = watch('gitMergeMethod')
-  const gitProviderType = watch('gitProviderType')
-
+  const [visibility, setVisibility] = useState<'private' | 'public'>('private')
+  const [gitProviderType, setGitProviderType] = useState<GitProviderType>('github')
+  const [autoMergePr, setAutoMergePr] = useState(false)
+  const [gitMergeMethod, setGitMergeMethod] = useState<GitMergeMethod>('merge')
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<EditProjectForm>({
+    defaultValues: {
+      name: '',
+      description: '',
+      gitRepoUrl: '',
+      gitBaseUrl: '',
+      gitAccessToken: '',
+      gitUsername: '',
+      gitPassword: '',
+    },
+  })
   // Auto-detect provider type from repo URL
   function handleRepoUrlChange(e: React.ChangeEvent<HTMLInputElement>) {
     const url = e.target.value.toLowerCase()
     if (url.includes('github.com')) {
-      setValue('gitProviderType', 'github')
+      setGitProviderType('github')
     } else if (url.includes('gitlab.com') || url.includes('gitlab')) {
-      setValue('gitProviderType', 'gitlab')
+      setGitProviderType('gitlab')
     } else if (url.length > 10) {
-      setValue('gitProviderType', 'generic')
+      setGitProviderType('generic')
     }
   }
 
   useEffect(() => {
-    if (open) {
-      reset({
-        name: project.name,
-        description: project.description || '',
-        gitRepoUrl: project.gitRepoUrl || '',
-        gitProviderType: project.gitProviderType || 'github',
-        gitBaseUrl: project.gitBaseUrl || '',
-        gitAccessToken: '',
-        gitUsername: '',
-        gitPassword: '',
-        autoMergePr: project.autoMergePr,
-        gitMergeMethod: project.gitMergeMethod || 'merge',
-        visibility: project.visibility,
-      })
-    }
-  }, [open, project, reset])
+    if (!open) return
+
+    const normalizedVisibility = normalizeVisibility(project.visibility)
+    const normalizedGitProviderType = normalizeGitProviderType(project.gitProviderType)
+    const normalizedGitMergeMethod = normalizeGitMergeMethod(project.gitMergeMethod)
+
+    reset({
+      name: project.name,
+      description: project.description || '',
+      gitRepoUrl: project.gitRepoUrl || '',
+      gitBaseUrl: project.gitBaseUrl || '',
+      gitAccessToken: '',
+      gitUsername: '',
+      gitPassword: '',
+    })
+    setVisibility(normalizedVisibility)
+    setGitProviderType(normalizedGitProviderType)
+    setAutoMergePr(project.autoMergePr ?? false)
+    setGitMergeMethod(normalizedGitMergeMethod)
+  }, [open, project.id])
 
   async function onSubmit(data: EditProjectForm) {
     setLoading(true)
@@ -79,11 +122,11 @@ export function EditProjectDialog({ open, onOpenChange, project, onSuccess }: Ed
         name: data.name,
         description: data.description || null,
         gitRepoUrl: data.gitRepoUrl || null,
-        gitProviderType: data.gitProviderType,
+        gitProviderType: normalizeGitProviderType(gitProviderType),
         gitBaseUrl: data.gitBaseUrl || null,
-        autoMergePr: data.autoMergePr,
-        gitMergeMethod: data.gitMergeMethod,
-        visibility: data.visibility,
+        autoMergePr,
+        gitMergeMethod: normalizeGitMergeMethod(gitMergeMethod),
+        visibility: normalizeVisibility(visibility),
       }
       // 只在用户实际输入了新值时才提交敏感字段
       if (data.gitAccessToken) {
@@ -148,11 +191,20 @@ export function EditProjectDialog({ open, onOpenChange, project, onSuccess }: Ed
         </div>
         <div className="space-y-2">
           <Label htmlFor="edit-visibility">可见性</Label>
-          <Select value={visibility} onValueChange={(v) => setValue('visibility', v as 'private' | 'public')}>
-            <SelectTrigger>
+          <Select
+            value={visibility}
+            onValueChange={(v) => {
+              const next = parseVisibility(v)
+              if (!next) {
+                return
+              }
+              setVisibility(next)
+            }}
+          >
+            <SelectTrigger id="edit-visibility">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent withPortal={false}>
               <SelectItem value="private">私有 — 仅成员可见</SelectItem>
               <SelectItem value="public">公开 — 所有人可查看</SelectItem>
             </SelectContent>
@@ -168,11 +220,20 @@ export function EditProjectDialog({ open, onOpenChange, project, onSuccess }: Ed
         </div>
         <div className="space-y-2">
           <Label htmlFor="edit-gitProviderType">Git 平台</Label>
-          <Select value={gitProviderType} onValueChange={(v) => setValue('gitProviderType', v as GitProviderType)}>
-            <SelectTrigger>
+          <Select
+            value={gitProviderType}
+            onValueChange={(v) => {
+              const next = parseGitProviderType(v)
+              if (!next) {
+                return
+              }
+              setGitProviderType(next)
+            }}
+          >
+            <SelectTrigger id="edit-gitProviderType">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent withPortal={false}>
               <SelectItem value="github">GitHub</SelectItem>
               <SelectItem value="gitlab">GitLab</SelectItem>
               <SelectItem value="generic">通用 Git（用户名/密码）</SelectItem>
@@ -245,17 +306,26 @@ export function EditProjectDialog({ open, onOpenChange, project, onSuccess }: Ed
           <Switch
             id="edit-autoMergePr"
             checked={autoMergePr}
-            onCheckedChange={(checked) => setValue('autoMergePr', checked)}
+            onCheckedChange={setAutoMergePr}
           />
         </div>
         {autoMergePr && (
           <div className="space-y-2">
             <Label htmlFor="edit-gitMergeMethod">合并方式</Label>
-            <Select value={gitMergeMethod} onValueChange={(v) => setValue('gitMergeMethod', v as GitMergeMethod)}>
-              <SelectTrigger>
+            <Select
+              value={gitMergeMethod}
+              onValueChange={(v) => {
+                const next = parseGitMergeMethod(v)
+                if (!next) {
+                  return
+                }
+                setGitMergeMethod(next)
+              }}
+            >
+              <SelectTrigger id="edit-gitMergeMethod">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent withPortal={false}>
                 <SelectItem value="merge">Merge — 创建合并提交（推荐）</SelectItem>
                 <SelectItem value="squash">Squash — 压缩为单个提交</SelectItem>
                 <SelectItem value="rebase">Rebase — 线性合并</SelectItem>
