@@ -32,14 +32,20 @@ export interface MergePullRequestResult {
 
 export interface GitProvider {
   /**
-   * Create a pull request.
-   * @throws Error if PR creation fails
+   * Whether this provider supports pull/merge request operations.
+   * Generic Git providers (plain HTTPS) do not support PR APIs.
+   */
+  readonly supportsPullRequests: boolean
+
+  /**
+   * Create a pull request (or merge request for GitLab).
+   * @throws Error if PR creation fails or not supported
    */
   createPullRequest(params: CreatePullRequestParams): Promise<PullRequestResult>
 
   /**
    * Merge a pull request.
-   * @throws Error if merge fails
+   * @throws Error if merge fails or not supported
    */
   mergePullRequest(params: MergePullRequestParams): Promise<MergePullRequestResult>
 
@@ -48,4 +54,10 @@ export interface GitProvider {
    * @returns { owner, repo } or null if not parseable
    */
   parseRepoUrl(url: string): { owner: string; repo: string } | null
+
+  /**
+   * Delete a remote branch.
+   * Optional — only supported by providers with API access.
+   */
+  deleteBranch?(owner: string, repo: string, branch: string): Promise<boolean>
 }

@@ -1,12 +1,17 @@
 // Project types
 export type GitMergeMethod = 'merge' | 'squash' | 'rebase'
+export type GitProviderType = 'github' | 'gitlab' | 'generic'
 
 export interface Project {
   id: string
   name: string
   description: string | null
   gitRepoUrl: string | null
+  gitProviderType: GitProviderType
+  gitBaseUrl: string | null
   gitAccessToken: string | null
+  gitUsername: string | null
+  gitPassword: string | null
   autoMergePr: boolean
   gitMergeMethod: GitMergeMethod
   visibility: 'private' | 'public'
@@ -19,7 +24,11 @@ export interface CreateProjectDto {
   name: string
   description?: string
   gitRepoUrl?: string
+  gitProviderType?: GitProviderType
+  gitBaseUrl?: string
   gitAccessToken?: string
+  gitUsername?: string
+  gitPassword?: string
   autoMergePr?: boolean
   gitMergeMethod?: GitMergeMethod
   visibility?: 'private' | 'public'

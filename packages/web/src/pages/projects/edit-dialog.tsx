@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { api } from '@/lib/api'
-import type { Project, GitMergeMethod } from '@/lib/types'
+import type { Project, GitMergeMethod, GitProviderType } from '@/lib/types'
 import { useProjectStore } from '@/stores/project-store'
 import { DraggableResizableDialog } from '@/components/draggable-resizable-dialog'
 import { Button } from '@/components/ui/button'
@@ -22,7 +22,11 @@ interface EditProjectForm {
   name: string
   description: string
   gitRepoUrl: string
+  gitProviderType: GitProviderType
+  gitBaseUrl: string
   gitAccessToken: string
+  gitUsername: string
+  gitPassword: string
   autoMergePr: boolean
   gitMergeMethod: GitMergeMethod
   visibility: 'private' | 'public'
@@ -36,6 +40,19 @@ export function EditProjectDialog({ open, onOpenChange, project, onSuccess }: Ed
   const visibility = watch('visibility')
   const autoMergePr = watch('autoMergePr')
   const gitMergeMethod = watch('gitMergeMethod')
+  const gitProviderType = watch('gitProviderType')
+
+  // Auto-detect provider type from repo URL
+  function handleRepoUrlChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const url = e.target.value.toLowerCase()
+    if (url.includes('github.com')) {
+      setValue('gitProviderType', 'github')
+    } else if (url.includes('gitlab.com') || url.includes('gitlab')) {
+      setValue('gitProviderType', 'gitlab')
+    } else if (url.length > 10) {
+      setValue('gitProviderType', 'generic')
+    }
+  }
 
   useEffect(() => {
     if (open) {
@@ -43,7 +60,11 @@ export function EditProjectDialog({ open, onOpenChange, project, onSuccess }: Ed
         name: project.name,
         description: project.description || '',
         gitRepoUrl: project.gitRepoUrl || '',
+        gitProviderType: project.gitProviderType || 'github',
+        gitBaseUrl: project.gitBaseUrl || '',
         gitAccessToken: '',
+        gitUsername: '',
+        gitPassword: '',
         autoMergePr: project.autoMergePr,
         gitMergeMethod: project.gitMergeMethod || 'merge',
         visibility: project.visibility,
@@ -58,13 +79,21 @@ export function EditProjectDialog({ open, onOpenChange, project, onSuccess }: Ed
         name: data.name,
         description: data.description || null,
         gitRepoUrl: data.gitRepoUrl || null,
+        gitProviderType: data.gitProviderType,
+        gitBaseUrl: data.gitBaseUrl || null,
         autoMergePr: data.autoMergePr,
         gitMergeMethod: data.gitMergeMethod,
         visibility: data.visibility,
       }
-      // 只在用户实际输入了新 token 时才提交
+      // 只在用户实际输入了新值时才提交敏感字段
       if (data.gitAccessToken) {
         payload.gitAccessToken = data.gitAccessToken
+      }
+      if (data.gitUsername) {
+        payload.gitUsername = data.gitUsername
+      }
+      if (data.gitPassword) {
+        payload.gitPassword = data.gitPassword
       }
 
       const updated = await api.put(`projects/${project.id}`, { json: payload }).json<Project>()
@@ -134,23 +163,78 @@ export function EditProjectDialog({ open, onOpenChange, project, onSuccess }: Ed
           <Input
             id="edit-gitRepoUrl"
             placeholder="https://github.com/user/repo.git"
-            {...register('gitRepoUrl')}
+            {...register('gitRepoUrl', { onChange: handleRepoUrlChange })}
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="edit-gitAccessToken">Git Access Token</Label>
-          <Input
-            id="edit-gitAccessToken"
-            type="password"
-            placeholder="留空则不修改"
-            {...register('gitAccessToken')}
-          />
-          {project.gitAccessToken && (
-            <p className="text-xs text-muted-foreground">
-              当前 Token：{project.gitAccessToken}
-            </p>
-          )}
+          <Label htmlFor="edit-gitProviderType">Git 平台</Label>
+          <Select value={gitProviderType} onValueChange={(v) => setValue('gitProviderType', v as GitProviderType)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="github">GitHub</SelectItem>
+              <SelectItem value="gitlab">GitLab</SelectItem>
+              <SelectItem value="generic">通用 Git（用户名/密码）</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
+        {gitProviderType === 'gitlab' && (
+          <div className="space-y-2">
+            <Label htmlFor="edit-gitBaseUrl">GitLab 地址</Label>
+            <Input
+              id="edit-gitBaseUrl"
+              placeholder="https://gitlab.com（自托管请填写实际地址）"
+              {...register('gitBaseUrl')}
+            />
+          </div>
+        )}
+        {gitProviderType !== 'generic' ? (
+          <div className="space-y-2">
+            <Label htmlFor="edit-gitAccessToken">Git Access Token</Label>
+            <Input
+              id="edit-gitAccessToken"
+              type="password"
+              placeholder="留空则不修改"
+              {...register('gitAccessToken')}
+            />
+            {project.gitAccessToken && (
+              <p className="text-xs text-muted-foreground">
+                当前 Token：{project.gitAccessToken}
+              </p>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="edit-gitUsername">Git 用户名</Label>
+              <Input
+                id="edit-gitUsername"
+                placeholder="留空则不修改"
+                {...register('gitUsername')}
+              />
+              {project.gitUsername && (
+                <p className="text-xs text-muted-foreground">
+                  当前用户名：{project.gitUsername}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-gitPassword">Git 密码</Label>
+              <Input
+                id="edit-gitPassword"
+                type="password"
+                placeholder="留空则不修改"
+                {...register('gitPassword')}
+              />
+              {project.gitPassword && (
+                <p className="text-xs text-muted-foreground">
+                  当前密码：{project.gitPassword}
+                </p>
+              )}
+            </div>
+          </>
+        )}
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
             <Label htmlFor="edit-autoMergePr">自动合并 PR</Label>

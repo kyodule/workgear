@@ -5,7 +5,7 @@ import { projects, kanbans, kanbanColumns, projectMembers } from '../db/schema.j
 import { authenticate, optionalAuth, requireProjectAccess } from '../middleware/auth.js'
 
 export async function projectRoutes(app: FastifyInstance) {
-  // 脱敏 Token：仅显示前4位 + ***
+  // 脱敏 Token 和密码：仅显示前4位 + ***
   function maskToken(token: string | null): string | null {
     if (!token) return null
     if (token.length <= 4) return '****'
@@ -13,7 +13,11 @@ export async function projectRoutes(app: FastifyInstance) {
   }
 
   function sanitizeProject(project: typeof projects.$inferSelect) {
-    return { ...project, gitAccessToken: maskToken(project.gitAccessToken) }
+    return {
+      ...project,
+      gitAccessToken: maskToken(project.gitAccessToken),
+      gitPassword: maskToken(project.gitPassword),
+    }
   }
 
   // 获取所有项目（用户参与的 + public 项目）
@@ -67,9 +71,33 @@ export async function projectRoutes(app: FastifyInstance) {
 
   // 创建项目（自动创建默认看板和列）
   app.post<{
-    Body: { name: string; description?: string; gitRepoUrl?: string; gitAccessToken?: string; autoMergePr?: boolean; gitMergeMethod?: string; visibility?: string }
+    Body: {
+      name: string
+      description?: string
+      gitRepoUrl?: string
+      gitProviderType?: string
+      gitBaseUrl?: string
+      gitAccessToken?: string
+      gitUsername?: string
+      gitPassword?: string
+      autoMergePr?: boolean
+      gitMergeMethod?: string
+      visibility?: string
+    }
   }>('/', { preHandler: [authenticate] }, async (request, reply) => {
-    const { name, description, gitRepoUrl, gitAccessToken, autoMergePr, gitMergeMethod, visibility } = request.body
+    const {
+      name,
+      description,
+      gitRepoUrl,
+      gitProviderType,
+      gitBaseUrl,
+      gitAccessToken,
+      gitUsername,
+      gitPassword,
+      autoMergePr,
+      gitMergeMethod,
+      visibility,
+    } = request.body
     const userId = request.userId!
 
     if (!name || name.trim().length === 0) {
@@ -81,7 +109,11 @@ export async function projectRoutes(app: FastifyInstance) {
       name: name.trim(),
       description: description || null,
       gitRepoUrl: gitRepoUrl || null,
+      gitProviderType: gitProviderType || 'github',
+      gitBaseUrl: gitBaseUrl || null,
       gitAccessToken: gitAccessToken || null,
+      gitUsername: gitUsername || null,
+      gitPassword: gitPassword || null,
       autoMergePr: autoMergePr ?? false,
       gitMergeMethod: gitMergeMethod || 'merge',
       visibility: visibility === 'public' ? 'public' : 'private',
@@ -117,20 +149,48 @@ export async function projectRoutes(app: FastifyInstance) {
   // 更新项目
   app.put<{
     Params: { id: string }
-    Body: { name?: string; description?: string; gitRepoUrl?: string; gitAccessToken?: string; autoMergePr?: boolean; gitMergeMethod?: string; visibility?: string }
+    Body: {
+      name?: string
+      description?: string
+      gitRepoUrl?: string
+      gitProviderType?: string
+      gitBaseUrl?: string
+      gitAccessToken?: string
+      gitUsername?: string
+      gitPassword?: string
+      autoMergePr?: boolean
+      gitMergeMethod?: string
+      visibility?: string
+    }
   }>(
     '/:id',
     { preHandler: [authenticate, requireProjectAccess('owner')] },
     async (request, reply) => {
       const { id } = request.params
-      const { name, description, gitRepoUrl, gitAccessToken, autoMergePr, gitMergeMethod, visibility } = request.body
+      const {
+        name,
+        description,
+        gitRepoUrl,
+        gitProviderType,
+        gitBaseUrl,
+        gitAccessToken,
+        gitUsername,
+        gitPassword,
+        autoMergePr,
+        gitMergeMethod,
+        visibility,
+      } = request.body
 
       const [updated] = await db.update(projects)
         .set({
           ...(name !== undefined && { name }),
           ...(description !== undefined && { description }),
           ...(gitRepoUrl !== undefined && { gitRepoUrl }),
+          ...(gitProviderType !== undefined && { gitProviderType }),
+          ...(gitBaseUrl !== undefined && { gitBaseUrl }),
           ...(gitAccessToken !== undefined && { gitAccessToken }),
+          ...(gitUsername !== undefined && { gitUsername }),
+          ...(gitPassword !== undefined && { gitPassword }),
           ...(autoMergePr !== undefined && { autoMergePr }),
           ...(gitMergeMethod !== undefined && { gitMergeMethod }),
           ...(visibility !== undefined && { visibility }),

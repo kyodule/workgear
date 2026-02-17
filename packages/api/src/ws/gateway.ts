@@ -5,7 +5,7 @@ import { subscribeEvents } from '../grpc/client.js'
 import type { ServerEvent } from '../grpc/client.js'
 import { db } from '../db/index.js'
 import { flowRuns, tasks, projects, timelineEvents } from '../db/schema.js'
-import { GitHubProvider } from '../lib/github-provider.js'
+import { createGitProvider } from '../lib/git-provider-factory.js'
 
 interface WSClient {
   ws: WebSocket
@@ -170,10 +170,19 @@ async function handleFlowCompletedAutoMerge(
   if (!task) return
 
   const [project] = await db.select().from(projects).where(eq(projects.id, task.projectId))
-  if (!project?.autoMergePr || !project.gitAccessToken || !project.gitRepoUrl) return
+  if (!project?.autoMergePr || !project.gitRepoUrl) return
 
-  // 3. Execute squash merge
-  const provider = new GitHubProvider(project.gitAccessToken)
+  // 3. Create provider and execute merge
+  const provider = createGitProvider({
+    providerType: project.gitProviderType,
+    accessToken: project.gitAccessToken,
+    baseUrl: project.gitBaseUrl,
+    username: project.gitUsername,
+    password: project.gitPassword,
+  })
+
+  if (!provider.supportsPullRequests) return
+
   const repoInfo = provider.parseRepoUrl(project.gitRepoUrl)
   if (!repoInfo) return
 
@@ -208,7 +217,7 @@ async function handleFlowCompletedAutoMerge(
     })
 
     // 6. Delete feature branch
-    if (flowRun.branchName) {
+    if (flowRun.branchName && provider.deleteBranch) {
       await provider.deleteBranch(repoInfo.owner, repoInfo.repo, flowRun.branchName).catch(() => {})
     }
 

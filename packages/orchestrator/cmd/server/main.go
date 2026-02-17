@@ -64,7 +64,7 @@ func main() {
 	}
 
 	if loadResult.ProvidersLoaded == 0 {
-		sugar.Fatalf("No agent providers available (database empty and no env fallback)")
+		sugar.Warn("No agent providers available (database empty and no env fallback), starting in degraded mode")
 	}
 
 	// Startup validation: warn about unmapped default roles

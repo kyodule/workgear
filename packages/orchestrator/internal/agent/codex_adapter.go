@@ -103,6 +103,20 @@ func (a *CodexAdapter) BuildRequest(ctx context.Context, req *AgentRequest) (*Ex
 		env["GIT_ACCESS_TOKEN"] = req.GitAccessToken
 	}
 
+	// Git provider info
+	if req.GitProviderType != "" {
+		env["GIT_PROVIDER_TYPE"] = req.GitProviderType
+	}
+	if req.GitBaseUrl != "" {
+		env["GIT_BASE_URL"] = req.GitBaseUrl
+	}
+	if req.GitUsername != "" {
+		env["GIT_USERNAME"] = req.GitUsername
+	}
+	if req.GitPassword != "" {
+		env["GIT_PASSWORD"] = req.GitPassword
+	}
+
 	// Skip Git for generate_change_name mode
 	if req.Mode == "generate_change_name" {
 		env["GIT_REPO_URL"] = ""
