@@ -88,11 +88,22 @@ export function TaskDetail({ task, open, onOpenChange, onDeleted }: TaskDetailPr
 
   return (
     <>
-      <Sheet open={open} onOpenChange={(isOpen) => {
+      <Sheet modal={false} open={open} onOpenChange={(isOpen) => {
         if (!isOpen) setFullscreenPreview(null)
         onOpenChange(isOpen)
       }}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+      <SheetContent
+        className="w-full sm:max-w-lg overflow-y-auto"
+        onInteractOutside={(event) => {
+          const target = event.target as HTMLElement | null
+          if (
+            target?.closest('[data-draggable-dialog-surface="true"]') ||
+            target?.closest('[data-draggable-dialog-overlay="true"]')
+          ) {
+            event.preventDefault()
+          }
+        }}
+      >
         <MarkdownFullscreenPreview
           open={!!fullscreenPreview}
           onOpenChange={(isOpen) => { if (!isOpen) setFullscreenPreview(null) }}

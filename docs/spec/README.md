@@ -54,6 +54,7 @@
 | [09-implementation-details.md](./09-implementation-details.md) | 流程引擎执行器（持久化状态机）、协同节点、Outbox Worker、WebSocket推送 |
 | [10-improvements.md](./10-improvements.md) | 改进方案汇总（基于设计评审报告） |
 | [11-security.md](./11-security.md) | Agent沙箱、数据分级、审计日志、Prompt注入防护 |
+| [16-dialog-ux-guidelines.md](./16-dialog-ux-guidelines.md) | 对话框统一规范、渐进式披露层级、嵌套弹层交互约束 |
 | [schemas/prd.v1.json](./schemas/prd.v1.json) | PRD JSON Schema |
 | [schemas/user-story.v1.json](./schemas/user-story.v1.json) | User Story JSON Schema |
 | [rubrics/prd-quality.v1.yaml](./rubrics/prd-quality.v1.yaml) | PRD 质量评估 Rubric |

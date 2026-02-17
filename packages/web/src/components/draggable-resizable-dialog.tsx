@@ -155,9 +155,11 @@ export function DraggableResizableDialog({
           className="fixed inset-0 z-50 bg-black/80"
           onClick={() => onOpenChange(false)}
           data-testid="dialog-overlay"
+          data-draggable-dialog-overlay="true"
         />
       )}
       <Rnd
+        data-draggable-dialog-surface="true"
         key={String(open)} // open 变化时重新挂载，重置位置和尺寸
         default={{
           x: centerX,
@@ -173,7 +175,7 @@ export function DraggableResizableDialog({
           'fixed z-50 flex flex-col rounded-lg border bg-background shadow-lg',
           containerClassName,
         )}
-        style={{ display: 'flex' }}
+        style={{ display: 'flex', pointerEvents: 'auto' }}
       >
         <div
           ref={dialogRef}

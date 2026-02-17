@@ -63,12 +63,26 @@ export function NodeLogDialog({ nodeRun, open, onClose }: NodeLogDialogProps) {
     if (!scrollElement) return
 
     const handleScroll = () => {
-      const isAtBottom = scrollElement.scrollHeight - scrollElement.scrollTop <= scrollElement.clientHeight + 50
+      const distanceFromBottom =
+        scrollElement.scrollHeight - scrollElement.clientHeight - scrollElement.scrollTop
+      // Keep a tiny tolerance for fractional scroll values.
+      const isAtBottom = distanceFromBottom <= 2
       setAutoScroll(isAtBottom)
     }
 
+    const handleWheel = (event: WheelEvent) => {
+      // If user scrolls upward, immediately stop auto-following new logs.
+      if (event.deltaY < 0) {
+        setAutoScroll(false)
+      }
+    }
+
     scrollElement.addEventListener('scroll', handleScroll)
-    return () => scrollElement.removeEventListener('scroll', handleScroll)
+    scrollElement.addEventListener('wheel', handleWheel, { passive: true })
+    return () => {
+      scrollElement.removeEventListener('scroll', handleScroll)
+      scrollElement.removeEventListener('wheel', handleWheel)
+    }
   }, [open])
 
   if (!nodeRun) return null
