@@ -173,6 +173,24 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 	// Store role in context for prompt builder
 	inputCtx["_role"] = role
 
+	// Parse timeout from DSL: priority nodeDef.Timeout > nodeDef.Config.Timeout
+	timeoutStr := ""
+	if nodeDef.Timeout != "" {
+		timeoutStr = nodeDef.Timeout
+	} else if nodeDef.Config != nil && nodeDef.Config.Timeout != "" {
+		timeoutStr = nodeDef.Config.Timeout
+	}
+
+	var timeout time.Duration
+	if timeoutStr != "" {
+		parsed, err := time.ParseDuration(timeoutStr)
+		if err != nil {
+			e.logger.Warnw("Invalid timeout format in DSL, using default", "timeout", timeoutStr, "error", err)
+		} else {
+			timeout = parsed
+		}
+	}
+
 	agentReq := &agent.AgentRequest{
 		TaskID:          nodeRun.ID,
 		FlowRunID:       nodeRun.FlowRunID,
@@ -192,6 +210,7 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 		RolePrompt:      rolePrompt,
 		Feedback:        feedback,
 		Model:           model,
+		Timeout:         timeout,
 		WorktreePath:    worktreePath,
 		DepsPath:        depsPath,
 	}

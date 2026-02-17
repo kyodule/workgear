@@ -29,6 +29,7 @@ type AgentRequest struct {
 	RolePrompt      string         `json:"role_prompt"`
 	Feedback        string         `json:"feedback"`
 	Model           string         `json:"model"` // Request-level model (highest priority)
+	Timeout         time.Duration  `json:"timeout,omitempty"` // Execution timeout from DSL
 	OpsxConfig      *OpsxConfig    `json:"opsx,omitempty"`
 	// Git repo cache: pre-created worktree paths
 	WorktreePath    string         `json:"worktree_path,omitempty"`

@@ -144,12 +144,17 @@ func (a *DroidAdapter) BuildRequest(ctx context.Context, req *AgentRequest) (*Ex
 		}
 	}
 
+	timeout := req.Timeout
+	if timeout == 0 {
+		timeout = 10 * time.Minute
+	}
+
 	return &ExecutorRequest{
 		Image:        a.image,
 		Command:      nil,
 		Env:          env,
 		WorkDir:      "/workspace",
-		Timeout:      10 * time.Minute,
+		Timeout:      timeout,
 		WorktreePath: req.WorktreePath,
 		DepsPath:     req.DepsPath,
 	}, nil
