@@ -118,6 +118,7 @@ scripts/         → 工具脚本
 | 开发弹层与对话框交互 | `docs/spec/16-dialog-ux-guidelines.md` | 对话框统一规范、组件职责、嵌套弹窗互操作 |
 | Phase 3 实施方案 | `docs/spec/13-phase3-implementation.md` | 流程引擎 + Mock Agent 实施细节 |
 | Phase 4 实施方案 | `docs/spec/14-phase4-agent-implementation.md` | 真实 Agent 调用（Docker 容器化）实施细节 |
+| Git 仓库缓存优化 | `docs/spec/17-git-repo-cache-optimization.md` | 项目级 bare repo + worktree + 依赖缓存 |
 
 ### 开发指引
 
