@@ -1083,3 +1083,161 @@ func (e *FlowExecutor) validateOpsxApplyResult(resp *agent.AgentResponse) error 
 
 	return nil
 }
+
+// ─── understanding_task ───
+
+func (e *FlowExecutor) executeUnderstandingTask(ctx context.Context, nodeRun *db.NodeRun) error {
+	// 1. Load DAG to get node config
+	flowRun, err := e.db.GetFlowRun(ctx, nodeRun.FlowRunID)
+	if err != nil {
+		return fmt.Errorf("load flow run: %w", err)
+	}
+
+	nodeDef, err := e.getNodeDef(flowRun, nodeRun.NodeID)
+	if err != nil {
+		return err
+	}
+
+	// 2. Build runtime template context
+	runtimeCtx := e.buildRuntimeContext(ctx, flowRun, nodeRun)
+
+	// 3. Get upstream outputs (reuse existing method)
+	upstreamOutputs, err := e.db.GetAllNodeRunOutputs(ctx, nodeRun.FlowRunID)
+	if err != nil {
+		return fmt.Errorf("get upstream outputs: %w", err)
+	}
+
+	// Add upstream outputs to runtime context
+	for nodeID, outputMap := range upstreamOutputs {
+		if outputMap != nil {
+			runtimeCtx[nodeID] = outputMap
+		}
+	}
+
+	// 4. Resolve role
+	role := "requirement-analyst"
+	if nodeDef.Config != nil && nodeDef.Config.Role != "" {
+		role = nodeDef.Config.Role
+		if rendered, err := RenderTemplate(role, runtimeCtx); err == nil {
+			role = rendered
+		}
+	}
+
+	// 5. Resolve mode
+	mode := "understand"
+	if nodeDef.Config != nil && nodeDef.Config.Mode != "" {
+		mode = nodeDef.Config.Mode
+	}
+
+	// 6. Parse timeout
+	timeout := agent.GetDefaultTimeout("understanding_task", mode)
+	if nodeDef.Config != nil && nodeDef.Config.Timeout != "" {
+		if parsed, err := time.ParseDuration(nodeDef.Config.Timeout); err == nil {
+			timeout = parsed
+		}
+	}
+
+	// 7. Render prompt template
+	prompt := ""
+	if nodeDef.Config != nil && nodeDef.Config.PromptTemplate != "" {
+		rendered, err := RenderTemplate(nodeDef.Config.PromptTemplate, runtimeCtx)
+		if err != nil {
+			e.logger.Warnw("Failed to render prompt template", "error", err)
+			prompt = nodeDef.Config.PromptTemplate
+		} else {
+			prompt = rendered
+		}
+	}
+
+	// 8. Get Git information
+	gitRepoURL, gitBranch, gitAccessToken, taskTitle, gitProviderType, gitBaseUrl, gitUsername, gitPassword, err := e.db.GetTaskGitInfoFull(ctx, flowRun.TaskID)
+	if err != nil {
+		e.logger.Warnw("Failed to get git info", "error", err)
+	}
+
+	// 9. Get adapter
+	adapter, modelName, err := e.registry.GetAdapterForRole(role)
+	if err != nil {
+		return fmt.Errorf("get adapter for role %s: %w", role, err)
+	}
+
+	// 10. Build agent request (Context should be map[string]any, not map[string]map[string]any)
+	contextMap := make(map[string]any)
+	for k, v := range upstreamOutputs {
+		contextMap[k] = v
+	}
+	
+	agentReq := &agent.AgentRequest{
+		TaskID:          flowRun.TaskID,
+		FlowRunID:       flowRun.ID,
+		NodeID:          nodeRun.NodeID,
+		Mode:            mode,
+		Prompt:          prompt,
+		Context:         contextMap,
+		Timeout:         timeout,
+		GitRepoURL:      gitRepoURL,
+		GitBranch:       gitBranch,
+		GitAccessToken:  gitAccessToken,
+		GitProviderType: gitProviderType,
+		GitBaseUrl:      gitBaseUrl,
+		GitUsername:     gitUsername,
+		GitPassword:     gitPassword,
+		TaskTitle:       taskTitle,
+		NodeName:        ptrStr(nodeRun.NodeName),
+	}
+
+	e.logger.Infow("Executing understanding task",
+		"node_id", nodeRun.NodeID,
+		"role", role,
+		"mode", mode,
+		"model", modelName,
+		"timeout", timeout,
+	)
+
+	// 11. Execute agent
+	resp, err := adapter.Execute(ctx, agentReq)
+	if err != nil {
+		return fmt.Errorf("agent execution failed: %w", err)
+	}
+
+	// 12. Extract understanding markdown from output
+	understandingMd := ""
+	if resp.Output != nil {
+		if md, ok := resp.Output["understanding"].(string); ok {
+			understandingMd = md
+		} else if result, ok := resp.Output["result"].(string); ok {
+			understandingMd = result
+		} else if summary, ok := resp.Output["summary"].(string); ok {
+			understandingMd = summary
+		}
+	}
+
+	// 13. Store to node_runs.output (for DSL reference)
+	output := map[string]any{
+		"understanding_md": understandingMd,
+		"_transient":       true,
+	}
+
+	if err := e.db.UpdateNodeRunOutput(ctx, nodeRun.ID, output); err != nil {
+		return fmt.Errorf("update node output: %w", err)
+	}
+
+	// 14. Store transient artifacts
+	transientArtifacts := map[string]any{
+		"understanding": map[string]any{
+			"type":    "markdown",
+			"content": understandingMd,
+		},
+	}
+
+	if err := e.db.UpdateNodeRunTransientArtifacts(ctx, nodeRun.ID, transientArtifacts); err != nil {
+		return fmt.Errorf("update transient artifacts: %w", err)
+	}
+
+	e.logger.Infow("Understanding task completed",
+		"node_id", nodeRun.NodeID,
+		"output_len", len(understandingMd),
+	)
+
+	return nil
+}

@@ -185,6 +185,8 @@ export const nodeRuns = pgTable('node_runs', {
   baseSha: varchar('base_sha', { length: 100 }),
   commitSha: varchar('commit_sha', { length: 100 }),
   worktreePath: varchar('worktree_path', { length: 500 }),
+  // Transient artifacts (non-Git artifacts like requirement understanding)
+  transientArtifacts: jsonb('transient_artifacts'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index('idx_node_runs_flow_run_id').on(table.flowRunId),

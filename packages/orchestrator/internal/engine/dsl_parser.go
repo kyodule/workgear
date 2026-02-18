@@ -39,7 +39,7 @@ type AgentDef struct {
 
 // NodeConfigDef holds node-specific configuration
 type NodeConfigDef struct {
-	Mode           string            `yaml:"mode"` // spec / execute / review / opsx_plan / opsx_apply
+	Mode           string            `yaml:"mode"` // spec / execute / review / opsx_plan / opsx_apply / understand
 	PromptTemplate string            `yaml:"prompt_template"`
 	ReviewTarget   string            `yaml:"review_target"`
 	Actions        []string          `yaml:"actions"`
@@ -49,6 +49,13 @@ type NodeConfigDef struct {
 	Artifact       *ArtifactConfigDef `yaml:"artifact"`
 	ShowArtifacts  bool              `yaml:"show_artifacts"`
 	ArtifactPaths  []string          `yaml:"artifact_paths"`
+	// Understanding task configuration
+	Role          string   `yaml:"role"`
+	MaxRetry      int      `yaml:"max_retry"`
+	OutputFormat  string   `yaml:"output_format"` // markdown / json / text
+	// Human review editable configuration
+	Editable       bool     `yaml:"editable"`
+	EditableFields []string `yaml:"editable_fields"`
 }
 
 // ArtifactConfigDef defines artifact creation for a node

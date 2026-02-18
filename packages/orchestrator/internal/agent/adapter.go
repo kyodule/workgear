@@ -6,6 +6,34 @@ import (
 	"time"
 )
 
+// ─── Default Timeout Constants ───
+
+// Default timeout constants for different node types and modes
+const (
+	DefaultUnderstandingTimeout = 10 * time.Minute // 需求理解
+	DefaultSpecTimeout          = 30 * time.Minute // Spec 生成
+	DefaultImplementTimeout     = 60 * time.Minute // 代码实施
+	DefaultReviewTimeout        = 30 * time.Minute // 审核环节
+)
+
+// GetDefaultTimeout 根据节点类型和模式返回默认超时
+func GetDefaultTimeout(nodeType, mode string) time.Duration {
+	switch {
+	case nodeType == "understanding_task":
+		return DefaultUnderstandingTimeout
+	case nodeType == "agent_task" && mode == "understand":
+		return DefaultUnderstandingTimeout
+	case nodeType == "agent_task" && (mode == "spec" || mode == "opsx_plan"):
+		return DefaultSpecTimeout
+	case nodeType == "agent_task" && (mode == "execute" || mode == "opsx_apply"):
+		return DefaultImplementTimeout
+	case nodeType == "human_review":
+		return DefaultReviewTimeout
+	default:
+		return 10 * time.Minute
+	}
+}
+
 // ─── Domain Models ───
 
 // AgentRequest represents a request to an agent

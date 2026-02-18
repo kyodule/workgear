@@ -227,6 +227,51 @@ const templates: TemplateDefinition[] = [
       },
     ],
   },
+  {
+    slug: 'openspec-dev-pipeline-v2',
+    name: 'Spec 驱动开发流水线 v2（优化版）',
+    description: '增加需求理解与确认环节，避免理解偏差：需求 → 理解 → 确认 → Spec 规划 → Review → 实施 → Code Review → 归档',
+    category: 'development',
+    difficulty: 'intermediate',
+    estimatedTime: '2-4 小时',
+    parameters: [
+      {
+        name: 'spec_role',
+        type: 'text',
+        label: 'Spec 架构师角色',
+        default: 'spec-architect',
+        required: true,
+      },
+      {
+        name: 'developer_role',
+        type: 'text',
+        label: 'Agent 开发者角色',
+        default: 'general-developer',
+        required: true,
+      },
+      {
+        name: 'spec_schema',
+        type: 'text',
+        label: 'OpenSpec Schema 版本',
+        default: 'v1',
+        required: false,
+      },
+      {
+        name: 'max_spec_review_loops',
+        type: 'number',
+        label: 'Spec Review 最大打回次数',
+        default: 3,
+        required: true,
+      },
+      {
+        name: 'max_code_review_loops',
+        type: 'number',
+        label: 'Code Review 最大打回次数',
+        default: 3,
+        required: true,
+      },
+    ],
+  },
 ]
 
 export async function runTemplatesSeed() {

@@ -137,6 +137,20 @@ func formatContext(ctx map[string]any) string {
 // modeInstruction returns mode-specific output instructions
 func modeInstruction(mode string) string {
 	switch mode {
+	case "understand":
+		return `当前模式：需求理解
+请快速输出对需求的理解（200-500 字 Markdown）：
+1. 核心目标（一句话）
+2. 关键点（3-5 个）
+3. 影响范围（涉及的文件/模块）
+4. 技术方案（初步，简要）
+5. 风险点（如果有）
+
+⚠️ 重要：
+- 你有 10 分钟完成
+- 不要生成完整的 Spec，只需要理解摘要
+- 不要深入分析代码，只需要列出关键文件
+- 如果不确定，标注"待确认"并继续`
 	case "spec":
 		return `当前模式：规划（spec）
 请输出详细的实施方案，包括：

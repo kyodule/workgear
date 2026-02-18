@@ -332,6 +332,18 @@ func (c *Client) UpdateNodeRunOutput(ctx context.Context, id string, output map[
 	return err
 }
 
+// UpdateNodeRunTransientArtifacts sets the transient artifacts of a node run
+func (c *Client) UpdateNodeRunTransientArtifacts(ctx context.Context, id string, artifacts map[string]any) error {
+	artifactsJSON, err := json.Marshal(artifacts)
+	if err != nil {
+		return fmt.Errorf("marshal transient artifacts: %w", err)
+	}
+	_, err = c.pool.Exec(ctx, `
+		UPDATE node_runs SET transient_artifacts = $2 WHERE id = $1
+	`, id, string(artifactsJSON))
+	return err
+}
+
 // UpdateNodeRunError sets the error on a node run
 func (c *Client) UpdateNodeRunError(ctx context.Context, id, status, errMsg string) error {
 	now := time.Now()
