@@ -246,6 +246,27 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 	var logEvents []map[string]any
 	var logMutex sync.Mutex
 
+	// Text buffer for merging consecutive assistant text blocks
+	var textBuffer strings.Builder
+	var textBufferTimestamp int64
+
+	flushTextBuffer := func() {
+		if textBuffer.Len() == 0 {
+			return
+		}
+		flatEvent := map[string]any{
+			"type":      "assistant",
+			"content":   textBuffer.String(),
+			"timestamp": textBufferTimestamp,
+		}
+		e.publishEvent(nodeRun.FlowRunID, nodeRun.ID, nodeRun.NodeID, "node.log_stream", flatEvent)
+		logMutex.Lock()
+		logEvents = append(logEvents, flatEvent)
+		logMutex.Unlock()
+		textBuffer.Reset()
+		textBufferTimestamp = 0
+	}
+
 	logCallback := agent.LogEventCallback(func(event agent.ClaudeStreamEvent) {
 		// Skip system/init events
 		if event.Type == "system" {
@@ -255,40 +276,66 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 		// Flatten nested structure into frontend-friendly events
 		if event.Message != nil {
 			for _, block := range event.Message.Content {
-				flatEvent := map[string]any{
-					"timestamp": event.Timestamp,
-				}
-				
 				switch block.Type {
 				case "text":
-					flatEvent["type"] = "assistant"
-					flatEvent["content"] = block.Text
+					// Accumulate text blocks into buffer
+					if textBuffer.Len() == 0 {
+						textBufferTimestamp = event.Timestamp
+					}
+					textBuffer.WriteString(block.Text)
+					
 				case "tool_use":
-					flatEvent["type"] = "tool_use"
-					flatEvent["tool_name"] = block.Name
-					flatEvent["tool_input"] = block.Input
+					// Flush text buffer before tool_use
+					flushTextBuffer()
+					
+					flatEvent := map[string]any{
+						"type":       "tool_use",
+						"tool_name":  block.Name,
+						"tool_input": block.Input,
+						"timestamp":  event.Timestamp,
+					}
+					e.publishEvent(nodeRun.FlowRunID, nodeRun.ID, nodeRun.NodeID, "node.log_stream", flatEvent)
+					logMutex.Lock()
+					logEvents = append(logEvents, flatEvent)
+					logMutex.Unlock()
+					
 				case "tool_result":
-					flatEvent["type"] = "tool_result"
-					flatEvent["content"] = fmt.Sprintf("%v", block.Content)
-					flatEvent["tool_use_id"] = block.ToolUseID
+					// Flush text buffer before tool_result
+					flushTextBuffer()
+					
+					flatEvent := map[string]any{
+						"type":        "tool_result",
+						"content":     fmt.Sprintf("%v", block.Content),
+						"tool_use_id": block.ToolUseID,
+						"timestamp":   event.Timestamp,
+					}
+					e.publishEvent(nodeRun.FlowRunID, nodeRun.ID, nodeRun.NodeID, "node.log_stream", flatEvent)
+					logMutex.Lock()
+					logEvents = append(logEvents, flatEvent)
+					logMutex.Unlock()
+					
 				default:
-					flatEvent["type"] = block.Type
-					flatEvent["content"] = fmt.Sprintf("%v", block)
+					// Flush text buffer before unknown block type
+					flushTextBuffer()
+					
+					flatEvent := map[string]any{
+						"type":      block.Type,
+						"content":   fmt.Sprintf("%v", block),
+						"timestamp": event.Timestamp,
+					}
+					e.publishEvent(nodeRun.FlowRunID, nodeRun.ID, nodeRun.NodeID, "node.log_stream", flatEvent)
+					logMutex.Lock()
+					logEvents = append(logEvents, flatEvent)
+					logMutex.Unlock()
 				}
-
-				// Real-time push via event bus
-				e.publishEvent(nodeRun.FlowRunID, nodeRun.ID, nodeRun.NodeID, "node.log_stream", flatEvent)
-
-				// Collect for persistence
-				logMutex.Lock()
-				logEvents = append(logEvents, flatEvent)
-				logMutex.Unlock()
 			}
 			return
 		}
 
-		// Handle result event
+		// Handle result event (flush text buffer first)
 		if event.Type == "result" {
+			flushTextBuffer()
+			
 			flatEvent := map[string]any{
 				"type":      "result",
 				"timestamp": event.Timestamp,
@@ -309,6 +356,10 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 	} else {
 		resp, err = adapter.Execute(ctx, agentReq)
 	}
+	
+	// Flush any remaining text in buffer after execution completes
+	flushTextBuffer()
+	
 	if err != nil {
 		// Persist logs even on failure
 		if len(logEvents) > 0 {
