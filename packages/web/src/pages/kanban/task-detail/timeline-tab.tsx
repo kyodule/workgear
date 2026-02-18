@@ -35,27 +35,32 @@ function getEventSummary(event: TimelineEvent): string {
       : event.content
   }
 
-  if (event.eventType === 'agent_dispatch_completed') {
+  if (event.eventType === 'agent_dispatch_completed' && typeof event.content === 'object' && event.content !== null) {
     const content = event.content as Record<string, any>
-    return `选中角色: ${content.selected_role}`
+    return content.selected_role ? `选中角色: ${content.selected_role}` : '选中角色: 未知'
   }
 
-  return `包含 ${Object.keys(event.content).length} 个字段`
+  if (typeof event.content === 'object' && event.content !== null) {
+    return `包含 ${Object.keys(event.content).length} 个字段`
+  }
+
+  return '无内容'
 }
 
 // 辅助函数：渲染事件完整内容
 function renderEventContent(event: TimelineEvent) {
-  if (event.eventType === 'agent_dispatch_completed' && typeof event.content === 'object') {
+  if (event.eventType === 'agent_dispatch_completed' && typeof event.content === 'object' && event.content !== null) {
+    const content = event.content as Record<string, any>
     return (
       <div className="space-y-1">
         <div>
-          选中角色: <Badge variant="secondary">{(event.content as Record<string, any>).selected_role}</Badge>
-          {(event.content as Record<string, any>).fallback && (
+          选中角色: <Badge variant="secondary">{content.selected_role || '未知'}</Badge>
+          {content.fallback && (
             <span className="ml-2 text-xs text-amber-600">⚠️ 降级策略</span>
           )}
         </div>
-        {(event.content as Record<string, any>).reason && (
-          <div className="text-muted-foreground">{(event.content as Record<string, any>).reason}</div>
+        {content.reason && (
+          <div className="text-muted-foreground">{content.reason}</div>
         )}
       </div>
     )
@@ -65,7 +70,11 @@ function renderEventContent(event: TimelineEvent) {
     return event.content
   }
 
-  return JSON.stringify(event.content, null, 2)
+  if (typeof event.content === 'object' && event.content !== null) {
+    return <pre className="whitespace-pre-wrap">{JSON.stringify(event.content, null, 2)}</pre>
+  }
+
+  return '无内容'
 }
 
 // 子组件：单个时间线事件项
@@ -120,19 +129,20 @@ export function TimelineTab({ taskId }: TimelineTabProps) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    async function loadTimeline() {
+      try {
+        setLoading(true)
+        const data = await api.get(`tasks/${taskId}/timeline`).json<TimelineEvent[]>()
+        setEvents(data)
+      } catch (error) {
+        console.error('Failed to load timeline:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
     loadTimeline()
   }, [taskId])
-
-  async function loadTimeline() {
-    try {
-      const data = await api.get(`tasks/${taskId}/timeline`).json<TimelineEvent[]>()
-      setEvents(data)
-    } catch (error) {
-      console.error('Failed to load timeline:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   if (loading) {
     return <p className="py-4 text-center text-sm text-muted-foreground">加载中...</p>
