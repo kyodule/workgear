@@ -79,6 +79,58 @@ Then 不显示全屏按钮
 
 ---
 
+## 产物在审核界面中的展示能力 (2026-02-18, human-review-show-artifacts)
+
+### Scenario 7: ArtifactPreviewCard 在审核界面中渲染
+
+```gherkin
+Given 审核界面加载了关联产物列表
+  And 产物列表包含多个不同类型的产物（proposal、design、tasks、spec）
+When 产物列表渲染
+Then 每个产物使用 <ArtifactPreviewCard> 组件渲染
+  And 卡片显示产物类型标签（如 Proposal、Design、Tasks）
+  And 卡片显示产物标题
+  And 卡片支持点击展开/折叠预览
+  And 展开后显示 Markdown 渲染的产物内容（最大高度 300px，可滚动）
+```
+
+### Scenario 8: 审核界面中的产物全屏查看
+
+```gherkin
+Given 审核界面中展示了产物卡片
+  And 产物卡片处于折叠状态
+When 用户点击产物卡片右侧的眼睛图标（Eye）
+Then 触发全屏查看回调
+  And 在全屏 Dialog 中展示产物的完整 Markdown 内容
+  And 全屏 Dialog 标题显示产物标题
+```
+
+### Scenario 9: 审核界面中的产物编辑
+
+```gherkin
+Given 审核界面中展示了产物卡片
+  And 产物卡片已展开且内容已加载
+  And 节点状态为 waiting_human（审核进行中）
+When 用户点击产物卡片的编辑按钮（Pencil 图标）
+Then 打开 <ArtifactEditorDialog> 编辑器
+  And 编辑器显示当前产物内容
+  And 编辑器标题显示产物类型和标题
+  And 用户可以修改内容并保存为新版本
+```
+
+### Scenario 10: 有产物时隐藏 JSON 格式的 input 展示
+
+```gherkin
+Given human_review 节点状态为 waiting_human
+  And 审核界面已加载到关联产物（nodeArtifacts.length > 0）
+When 产物区域渲染
+Then 不显示 JSON 格式的 input 待审核内容
+  And 仅展示格式化的产物卡片列表
+  And 审核操作按钮正常显示
+```
+
+---
+
 ## UI 规格
 
 ### MarkdownFullscreenDialog

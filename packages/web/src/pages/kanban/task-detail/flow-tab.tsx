@@ -269,7 +269,14 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
 
   async function loadNodeArtifacts() {
     try {
-      const data = await api.get(`artifacts?nodeRunId=${nodeRun.id}`).json<Artifact[]>()
+      // 1. 查询当前节点关联的产物
+      let data = await api.get(`artifacts?nodeRunId=${nodeRun.id}`).json<Artifact[]>()
+
+      // 2. 如果当前节点无产物且是 human_review 类型，查询整个 flowRun 的产物
+      if (data.length === 0 && nodeRun.nodeType === 'human_review') {
+        data = await api.get(`artifacts?flowRunId=${nodeRun.flowRunId}`).json<Artifact[]>()
+      }
+
       setNodeArtifacts(data)
     } catch (error) {
       console.error('Failed to load node artifacts:', error)
@@ -393,8 +400,8 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
             </div>
           )}
 
-          {/* Show input for waiting_human nodes */}
-          {nodeRun.status === 'waiting_human' && nodeRun.input && (
+          {/* Show input for waiting_human nodes — 仅在无产物时显示 */}
+          {nodeRun.status === 'waiting_human' && nodeRun.input && nodeArtifacts.length === 0 && (
             <div>
               <p className="text-xs font-medium text-muted-foreground mb-1">待审核内容</p>
               <CodeBlock
