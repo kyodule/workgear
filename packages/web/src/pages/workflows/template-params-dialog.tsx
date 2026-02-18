@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { AgentPoolParamEditor } from '@/components/workflow/agent-pool-param-editor'
 
 interface TemplateParamsDialogProps {
   open: boolean
@@ -70,7 +71,12 @@ export function TemplateParamsDialog({
               {param.label}
               {param.required && <span className="ml-1 text-destructive">*</span>}
             </Label>
-            {param.type === 'select' && param.options ? (
+            {param.type === 'agent_pool' ? (
+              <AgentPoolParamEditor
+                value={localValues[param.name] ?? []}
+                onChange={(v) => handleChange(param.name, v)}
+              />
+            ) : param.type === 'select' && param.options ? (
               <Select
                 value={String(localValues[param.name] ?? '')}
                 onValueChange={(value) => handleChange(param.name, value)}

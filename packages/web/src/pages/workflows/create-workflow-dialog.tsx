@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { AgentPoolParamEditor } from '@/components/workflow/agent-pool-param-editor'
 
 interface CreateWorkflowDialogProps {
   open: boolean
@@ -190,7 +191,12 @@ export function CreateWorkflowDialog({
                     {param.label}
                     {param.required && <span className="ml-1 text-destructive">*</span>}
                   </Label>
-                  {param.type === 'select' && param.options ? (
+                  {param.type === 'agent_pool' ? (
+                    <AgentPoolParamEditor
+                      value={params[param.name] ?? []}
+                      onChange={(v) => handleParamChange(param.name, v)}
+                    />
+                  ) : param.type === 'select' && param.options ? (
                     <Select
                       value={String(params[param.name] || '')}
                       onValueChange={(value) => handleParamChange(param.name, value)}

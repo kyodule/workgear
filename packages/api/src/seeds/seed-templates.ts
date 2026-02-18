@@ -272,6 +272,53 @@ const templates: TemplateDefinition[] = [
       },
     ],
   },
+  {
+    slug: 'multi-agent-dev-pipeline',
+    name: '多角色开发流水线',
+    description: '需求分析 → 动态分发 → 执行 → Review。适用于多芯片、全栈等需要多种开发角色的项目。',
+    category: 'development',
+    difficulty: 'intermediate',
+    estimatedTime: '2-6 小时',
+    parameters: [
+      {
+        name: 'analyst_role',
+        type: 'text',
+        label: '需求分析师角色',
+        default: 'requirement-analyst',
+        required: true,
+      },
+      {
+        name: 'dispatcher_role',
+        type: 'text',
+        label: '调度器 Agent 角色',
+        default: 'requirement-analyst',
+        required: true,
+      },
+      {
+        name: 'dispatch_pool',
+        type: 'agent_pool',
+        label: '可选 Agent 池',
+        default: [
+          { role: 'general-developer', description: '全栈开发工程师' },
+        ],
+        required: true,
+      },
+      {
+        name: 'max_analysis_loops',
+        type: 'number',
+        label: '需求分析最大打回次数',
+        default: 3,
+        required: true,
+      },
+      {
+        name: 'max_code_review_loops',
+        type: 'number',
+        label: 'Code Review 最大打回次数',
+        default: 3,
+        required: true,
+      },
+    ],
+  },
 ]
 
 export async function runTemplatesSeed() {

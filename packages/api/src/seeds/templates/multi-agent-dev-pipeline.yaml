@@ -1,0 +1,150 @@
+name: "multi-agent-dev-pipeline"
+version: "1.0"
+description: "多角色开发流水线：需求分析 → 动态分发 → 并行执行 → Review。适用于多芯片、全栈等需要多种开发角色的项目。"
+
+variables:
+  project_id: ""
+  requirement_text: ""
+
+nodes:
+  # ─── 阶段 1：提交需求 ───
+  - id: submit_requirement
+    name: "提交需求"
+    type: human_input
+    config:
+      form:
+        - field: requirement_text
+          type: textarea
+          label: "需求描述"
+          required: true
+        - field: priority
+          type: select
+          label: "优先级"
+          options: ["P0", "P1", "P2", "P3"]
+          default: "P1"
+
+  # ─── 阶段 2：架构师分析需求并拆分子任务 ───
+  - id: analyze_requirement
+    name: "分析需求"
+    type: agent_task
+    agent:
+      role: "{{params.analyst_role}}"
+    config:
+      mode: spec
+      prompt_template: |
+        你是一个需求分析师。请分析以下需求，拆分为可独立执行的子任务。
+
+        需求描述：{{nodes.submit_requirement.outputs.requirement_text}}
+        优先级：{{nodes.submit_requirement.outputs.priority}}
+
+        请输出 JSON 格式：
+        {
+          "summary": "需求摘要",
+          "sub_tasks": [
+            {
+              "id": "task-001",
+              "title": "子任务标题",
+              "description": "详细描述，包含技术要求和验收标准"
+            }
+          ]
+        }
+
+        注意：
+        - 每个子任务应当可以独立执行
+        - 描述中应包含足够的上下文信息
+        - 子任务 ID 使用 task-001, task-002 格式
+    timeout: 5m
+
+  # ─── 阶段 3：人工确认拆解 ───
+  - id: confirm_tasks
+    name: "确认任务拆解"
+    type: human_review
+    config:
+      actions: ["approve", "reject"]
+      artifact_scope: predecessor
+    on_reject:
+      goto: analyze_requirement
+      max_loops: "{{params.max_analysis_loops}}"
+      inject:
+        feedback: "{{review.comment}}"
+
+  # ─── 阶段 4：动态分发 Agent ───
+  - id: dispatch_agent
+    name: "选择执行 Agent"
+    type: agent_dispatch
+    agent:
+      role: "{{params.dispatcher_role}}"
+    config:
+      agent_pool: "{{params.dispatch_pool}}"
+      dispatch_prompt_template: |
+        你是一个智能任务调度器。请根据任务描述选择最合适的 Agent 角色来执行该任务。
+
+        任务信息：
+        - 标题: {{task.title}}
+        - 描述: {{task.description}}
+
+        可选 Agent 列表：
+        {{#each agent_pool}}
+        - role: {{role}}
+          description: {{description}}
+        {{/each}}
+
+        请严格输出以下 JSON 格式（不要输出其他内容）：
+        {
+          "selected_role": "选中的角色 slug",
+          "reason": "选择理由（1-2句话）"
+        }
+      fallback:
+        strategy: use_default
+        default_role: general-developer
+    timeout: 60s
+
+  # ─── 阶段 5：执行任务 ───
+  - id: execute_task
+    name: "执行任务"
+    type: agent_task
+    agent:
+      role: "{{nodes.dispatch_agent.outputs.selected_role}}"
+    config:
+      mode: execute
+      prompt_template: |
+        请按照以下任务要求完成开发：
+
+        任务：{{nodes.confirm_tasks.outputs.sub_tasks}}
+
+        分配理由：{{nodes.dispatch_agent.outputs.reason}}
+
+        请确保：
+        1. 代码质量符合项目规范
+        2. 包含必要的注释
+        3. 完成后执行 git add -A
+      git:
+        create_branch: true
+        branch_pattern: "feat/task-{{task.id}}"
+        auto_commit: true
+    timeout: 30m
+
+  # ─── 阶段 6：人工 Review ───
+  - id: review_code
+    name: "Review 代码"
+    type: human_review
+    config:
+      actions: ["approve", "reject"]
+      artifact_scope: predecessor
+    on_reject:
+      goto: execute_task
+      max_loops: "{{params.max_code_review_loops}}"
+      inject:
+        feedback: "{{review.comment}}"
+
+edges:
+  - from: submit_requirement
+    to: analyze_requirement
+  - from: analyze_requirement
+    to: confirm_tasks
+  - from: confirm_tasks
+    to: dispatch_agent
+  - from: dispatch_agent
+    to: execute_task
+  - from: execute_task
+    to: review_code

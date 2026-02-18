@@ -1162,3 +1162,360 @@ func (e *FlowExecutor) validateOpsxApplyResult(resp *agent.AgentResponse) error 
 
 	return nil
 }
+
+// ─── agent_dispatch ───
+
+// AgentPoolItem represents a candidate agent in the dispatch pool
+type AgentPoolItem struct {
+	Role        string `json:"role"`
+	Description string `json:"description"`
+}
+
+func (e *FlowExecutor) executeAgentDispatch(ctx context.Context, nodeRun *db.NodeRun) error {
+	// 1. Load DAG to get node config
+	flowRun, err := e.db.GetFlowRun(ctx, nodeRun.FlowRunID)
+	if err != nil {
+		return fmt.Errorf("load flow run: %w", err)
+	}
+
+	nodeDef, err := e.getNodeDef(flowRun, nodeRun.NodeID)
+	if err != nil {
+		return err
+	}
+
+	// 2. Build runtime template context
+	runtimeCtx := e.buildRuntimeContext(ctx, flowRun, nodeRun)
+
+	// 3. Parse agent_pool (may be a template expression or literal array)
+	agentPoolRaw := nodeDef.Config.AgentPool
+	// If it's a string, try rendering as template variable (e.g. "{{params.dispatch_pool}}")
+	if poolStr, ok := agentPoolRaw.(string); ok {
+		rendered, err := RenderTemplate(poolStr, runtimeCtx)
+		if err != nil {
+			return fmt.Errorf("render agent_pool template: %w", err)
+		}
+		// Try parsing rendered string as JSON array
+		var parsed interface{}
+		if err := json.Unmarshal([]byte(rendered), &parsed); err != nil {
+			return fmt.Errorf("agent_pool rendered to non-JSON value: %s", rendered)
+		}
+		agentPoolRaw = parsed
+	}
+
+	agentPool, err := e.parseAgentPool(agentPoolRaw)
+	if err != nil {
+		return fmt.Errorf("invalid agent_pool: %w", err)
+	}
+	if len(agentPool) < 2 {
+		return fmt.Errorf("agent_pool must contain at least 2 roles, got %d", len(agentPool))
+	}
+
+	// 4. Render dispatch_prompt_template
+	promptTemplate := nodeDef.Config.DispatchPromptTemplate
+	if promptTemplate == "" {
+		return fmt.Errorf("dispatch_prompt_template is required for agent_dispatch node")
+	}
+
+	// Add agent_pool and task input to template context
+	dispatchCtx := make(map[string]any)
+	for k, v := range runtimeCtx {
+		dispatchCtx[k] = v
+	}
+	if nodeRun.Input != nil {
+		var input map[string]any
+		if err := json.Unmarshal([]byte(*nodeRun.Input), &input); err == nil {
+			dispatchCtx["task"] = input
+		}
+	}
+	dispatchCtx["agent_pool"] = agentPool
+
+	prompt, err := RenderTemplate(promptTemplate, dispatchCtx)
+	if err != nil {
+		return fmt.Errorf("render dispatch prompt failed: %w", err)
+	}
+
+	// 5. Get dispatcher adapter (from agent.role, same as agent_task)
+	role := "general-developer" // fallback
+	if nodeDef.Agent != nil && nodeDef.Agent.Role != "" {
+		role = nodeDef.Agent.Role
+		if rendered, err := RenderTemplate(role, runtimeCtx); err == nil {
+			role = rendered
+		}
+	}
+
+	adapter, registryModel, err := e.registry.GetAdapterForRole(role)
+	if err != nil {
+		return e.handleDispatchFallback(ctx, nodeRun, flowRun, nodeDef, agentPool,
+			fmt.Errorf("dispatcher role %q not found: %w", role, err))
+	}
+
+	// 6. Get role config for system prompt
+	roleConfig, err := e.db.GetAgentRoleConfig(ctx, role)
+	if err != nil {
+		e.logger.Warnw("Failed to get dispatcher role config", "role", role, "error", err)
+	}
+	rolePrompt := ""
+	if roleConfig != nil {
+		rolePrompt = roleConfig.SystemPrompt
+	}
+
+	// 7. Determine model
+	model := ""
+	if nodeDef.Agent != nil && nodeDef.Agent.Model != "" {
+		model = nodeDef.Agent.Model
+		if rendered, err := RenderTemplate(model, runtimeCtx); err == nil {
+			model = rendered
+		}
+	}
+	if model == "" && registryModel != "" {
+		model = registryModel
+	}
+
+	// 8. Build agent request
+	var inputCtx map[string]any
+	if nodeRun.Input != nil {
+		_ = json.Unmarshal([]byte(*nodeRun.Input), &inputCtx)
+	}
+	if inputCtx == nil {
+		inputCtx = make(map[string]any)
+	}
+
+	// Parse timeout from DSL
+	timeout := 60 * time.Second // default short timeout for dispatch
+	if nodeDef.Timeout != "" {
+		if parsed, err := time.ParseDuration(nodeDef.Timeout); err == nil {
+			timeout = parsed
+		}
+	}
+
+	agentReq := &agent.AgentRequest{
+		TaskID:     nodeRun.ID,
+		FlowRunID:  nodeRun.FlowRunID,
+		NodeID:     nodeRun.NodeID,
+		Mode:       "execute",
+		Prompt:     prompt,
+		Context:    inputCtx,
+		RolePrompt: rolePrompt,
+		Model:      model,
+		Timeout:    timeout,
+	}
+
+	// 9. Execute dispatcher
+	e.logger.Infow("Executing agent dispatch",
+		"node_id", nodeRun.NodeID,
+		"dispatcher_role", role,
+		"agent_pool_size", len(agentPool),
+	)
+
+	resp, err := adapter.Execute(ctx, agentReq)
+	if err != nil {
+		return e.handleDispatchFallback(ctx, nodeRun, flowRun, nodeDef, agentPool, err)
+	}
+
+	// 10. Parse dispatcher output
+	var result struct {
+		SelectedRole string `json:"selected_role"`
+		Reason       string `json:"reason"`
+	}
+	if err := parseJSONFromAgentOutput(resp, &result); err != nil {
+		return e.handleDispatchFallback(ctx, nodeRun, flowRun, nodeDef, agentPool,
+			fmt.Errorf("parse dispatch result failed: %w", err))
+	}
+
+	// 11. Validate selected_role is in agent_pool
+	if !isRoleInPool(result.SelectedRole, agentPool) {
+		return e.handleDispatchFallback(ctx, nodeRun, flowRun, nodeDef, agentPool,
+			fmt.Errorf("selected role %q not in agent_pool", result.SelectedRole))
+	}
+
+	// 12. Save output
+	output := map[string]any{
+		"selected_role": result.SelectedRole,
+		"reason":        result.Reason,
+		"agent_pool":    agentPool,
+		"fallback":      false,
+	}
+	if resp.Metrics != nil {
+		output["dispatch_metrics"] = map[string]any{
+			"duration_ms":  resp.Metrics.DurationMs,
+			"token_input":  resp.Metrics.TokenInput,
+			"token_output": resp.Metrics.TokenOutput,
+		}
+	}
+
+	if err := e.db.UpdateNodeRunOutput(ctx, nodeRun.ID, output); err != nil {
+		return fmt.Errorf("save output: %w", err)
+	}
+	if err := e.db.UpdateNodeRunStatus(ctx, nodeRun.ID, db.StatusCompleted); err != nil {
+		return fmt.Errorf("update status: %w", err)
+	}
+
+	// 13. Publish completion event
+	e.publishEvent(nodeRun.FlowRunID, nodeRun.ID, nodeRun.NodeID, "node.completed", map[string]any{
+		"output": output,
+	})
+
+	// 14. Record timeline event
+	e.recordTimeline(ctx, flowRun.TaskID, nodeRun.FlowRunID, nodeRun.ID, "agent_dispatch_completed", map[string]any{
+		"node_id":       nodeRun.NodeID,
+		"node_name":     ptrStr(nodeRun.NodeName),
+		"selected_role": result.SelectedRole,
+		"reason":        result.Reason,
+	})
+
+	e.logger.Infow("Agent dispatch completed",
+		"node_id", nodeRun.NodeID,
+		"selected_role", result.SelectedRole,
+		"reason", result.Reason,
+	)
+
+	return nil
+}
+
+// parseAgentPool parses agent_pool from DSL config into typed slice
+func (e *FlowExecutor) parseAgentPool(raw interface{}) ([]AgentPoolItem, error) {
+	if raw == nil {
+		return nil, fmt.Errorf("agent_pool is nil")
+	}
+
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("marshal agent_pool: %w", err)
+	}
+
+	var pool []AgentPoolItem
+	if err := json.Unmarshal(data, &pool); err != nil {
+		return nil, fmt.Errorf("unmarshal agent_pool: %w", err)
+	}
+
+	return pool, nil
+}
+
+// isRoleInPool checks if a role exists in the agent pool
+func isRoleInPool(role string, pool []AgentPoolItem) bool {
+	for _, item := range pool {
+		if item.Role == role {
+			return true
+		}
+	}
+	return false
+}
+
+// handleDispatchFallback handles dispatch failure with fallback strategy
+func (e *FlowExecutor) handleDispatchFallback(
+	ctx context.Context,
+	nodeRun *db.NodeRun,
+	flowRun *db.FlowRun,
+	nodeDef *NodeDef,
+	agentPool []AgentPoolItem,
+	originalErr error,
+) error {
+	if nodeDef.Config == nil || nodeDef.Config.Fallback == nil {
+		return originalErr
+	}
+
+	fallbackCfg := nodeDef.Config.Fallback
+	strategy := fallbackCfg.Strategy
+
+	switch strategy {
+	case "use_default":
+		defaultRole := fallbackCfg.DefaultRole
+		if defaultRole == "" {
+			return fmt.Errorf("fallback default_role is empty, original error: %w", originalErr)
+		}
+
+		output := map[string]any{
+			"selected_role": defaultRole,
+			"reason":        fmt.Sprintf("调度失败（%v），使用默认角色", originalErr),
+			"agent_pool":    agentPool,
+			"fallback":      true,
+		}
+
+		if err := e.db.UpdateNodeRunOutput(ctx, nodeRun.ID, output); err != nil {
+			return fmt.Errorf("save fallback output: %w", err)
+		}
+		if err := e.db.UpdateNodeRunStatus(ctx, nodeRun.ID, db.StatusCompleted); err != nil {
+			return fmt.Errorf("update status: %w", err)
+		}
+
+		e.publishEvent(nodeRun.FlowRunID, nodeRun.ID, nodeRun.NodeID, "node.completed", map[string]any{
+			"output": output,
+		})
+
+		e.recordTimeline(ctx, flowRun.TaskID, nodeRun.FlowRunID, nodeRun.ID, "agent_dispatch_completed", map[string]any{
+			"node_id":       nodeRun.NodeID,
+			"node_name":     ptrStr(nodeRun.NodeName),
+			"selected_role": defaultRole,
+			"reason":        fmt.Sprintf("调度失败，使用默认角色: %v", originalErr),
+			"fallback":      true,
+		})
+
+		e.logger.Warnw("Agent dispatch fallback to default",
+			"node_id", nodeRun.NodeID,
+			"default_role", defaultRole,
+			"error", originalErr,
+		)
+		return nil
+
+	case "human_select":
+		output := map[string]any{
+			"agent_pool":     agentPool,
+			"fallback":       true,
+			"original_error": originalErr.Error(),
+		}
+
+		if err := e.db.UpdateNodeRunOutput(ctx, nodeRun.ID, output); err != nil {
+			return fmt.Errorf("save output: %w", err)
+		}
+		if err := e.db.UpdateNodeRunStatus(ctx, nodeRun.ID, db.StatusWaitingHuman); err != nil {
+			return fmt.Errorf("update status: %w", err)
+		}
+
+		e.publishEvent(nodeRun.FlowRunID, nodeRun.ID, nodeRun.NodeID, "node.waiting_human", map[string]any{
+			"agent_pool": agentPool,
+			"error":      originalErr.Error(),
+		})
+
+		e.logger.Warnw("Agent dispatch fallback to human select",
+			"node_id", nodeRun.NodeID,
+			"error", originalErr,
+		)
+		return nil
+
+	case "fail":
+		return originalErr
+
+	default:
+		return fmt.Errorf("unknown fallback strategy %q, original error: %w", strategy, originalErr)
+	}
+}
+
+// parseJSONFromAgentOutput extracts JSON from agent response output
+func parseJSONFromAgentOutput(resp *agent.AgentResponse, target interface{}) error {
+	// Try direct result field first
+	if resultStr, ok := resp.Output["result"].(string); ok {
+		// Try parsing as nested Claude CLI JSON
+		var cliOutput struct {
+			Result string `json:"result"`
+		}
+		if err := json.Unmarshal([]byte(resultStr), &cliOutput); err == nil && cliOutput.Result != "" {
+			resultStr = cliOutput.Result
+		}
+
+		// Parse the actual result
+		if err := json.Unmarshal([]byte(resultStr), target); err == nil {
+			return nil
+		}
+	}
+
+	// Fallback: try parsing entire output
+	data, err := json.Marshal(resp.Output)
+	if err != nil {
+		return fmt.Errorf("marshal output: %w", err)
+	}
+	if err := json.Unmarshal(data, target); err != nil {
+		return fmt.Errorf("unmarshal output: %w", err)
+	}
+
+	return nil
+}

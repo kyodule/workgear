@@ -59,6 +59,16 @@ type NodeConfigDef struct {
 	EditableFields []string `yaml:"editable_fields"`
 	// Artifact scope for human_review nodes: predecessor / flow / self
 	ArtifactScope  string   `yaml:"artifact_scope"`
+	// agent_dispatch configuration
+	AgentPool              interface{}       `yaml:"agent_pool"` // []AgentPoolItem or template expression
+	DispatchPromptTemplate string            `yaml:"dispatch_prompt_template"`
+	Fallback               *FallbackConfigDef `yaml:"fallback"`
+}
+
+// FallbackConfigDef defines fallback strategy for agent_dispatch
+type FallbackConfigDef struct {
+	Strategy    string `yaml:"strategy"`     // use_default / human_select / fail
+	DefaultRole string `yaml:"default_role"` // for use_default strategy
 }
 
 // ArtifactConfigDef defines artifact creation for a node

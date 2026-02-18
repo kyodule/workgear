@@ -104,9 +104,14 @@ export interface WorkflowTemplate {
   createdAt: string
 }
 
+export interface AgentPoolItem {
+  role: string
+  description: string
+}
+
 export interface TemplateParameter {
   name: string
-  type: 'text' | 'number' | 'select' | 'textarea'
+  type: 'text' | 'number' | 'select' | 'textarea' | 'agent_pool'
   label: string
   default?: any
   options?: string[]

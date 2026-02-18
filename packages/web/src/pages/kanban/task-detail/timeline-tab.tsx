@@ -14,6 +14,7 @@ const eventTypeLabels: Record<string, string> = {
   review_action: 'Review 操作',
   git_event: 'Git 事件',
   system_event: '系统事件',
+  agent_dispatch_completed: 'Agent 分发',
 }
 
 const eventTypeColors: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
@@ -23,6 +24,7 @@ const eventTypeColors: Record<string, 'default' | 'secondary' | 'destructive' | 
   review_action: 'destructive',
   git_event: 'secondary',
   system_event: 'outline',
+  agent_dispatch_completed: 'default',
 }
 
 export function TimelineTab({ taskId }: TimelineTabProps) {
@@ -75,7 +77,19 @@ export function TimelineTab({ taskId }: TimelineTabProps) {
               </span>
             </div>
             <div className="mt-1 text-sm">
-              {typeof event.content === 'string'
+              {event.eventType === 'agent_dispatch_completed' && typeof event.content === 'object' ? (
+                <div className="space-y-1">
+                  <div>
+                    选中角色: <Badge variant="secondary">{(event.content as Record<string, any>).selected_role}</Badge>
+                    {(event.content as Record<string, any>).fallback && (
+                      <span className="ml-2 text-xs text-amber-600">⚠️ 降级策略</span>
+                    )}
+                  </div>
+                  {(event.content as Record<string, any>).reason && (
+                    <div className="text-muted-foreground">{(event.content as Record<string, any>).reason}</div>
+                  )}
+                </div>
+              ) : typeof event.content === 'string'
                 ? event.content
                 : JSON.stringify(event.content, null, 2)}
             </div>
