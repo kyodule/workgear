@@ -173,6 +173,7 @@ export interface NodeRun {
   nodeName: string | null
   status: 'pending' | 'queued' | 'running' | 'completed' | 'failed' | 'rejected' | 'waiting_human' | 'cancelled'
   attempt: number
+  config: Record<string, any> | null
   input: Record<string, any> | null
   output: Record<string, any> | null
   error: string | null

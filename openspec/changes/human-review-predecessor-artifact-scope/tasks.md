@@ -4,34 +4,34 @@
 
 ### 核心逻辑 (flow-tab.tsx)
 
-- [ ] 新增 `getArtifactScope` 辅助函数，从 nodeRun.config 中解析 artifactScope 配置，默认返回 "predecessor" **[S]**
-- [ ] 新增 `extractPredecessorNodeRunIds` 辅助函数，从 nodeRun.input 中提取前驱节点 ID（支持三种数据结构） **[S]**
-- [ ] 重构 `loadNodeArtifacts` 函数，增加 artifactScope 逻辑分支：
-  - [ ] predecessor 模式：提取前驱节点 ID，并行查询产物，合并去重 **[M]**
-  - [ ] flow 模式：保持当前的双查询合并逻辑（nodeRunId + flowRunId） **[S]**
-  - [ ] self 模式：仅查询当前节点的产物 **[S]**
-- [ ] 处理前驱节点 ID 提取失败的降级逻辑（降级到 self 模式，记录 console.warn） **[S]**
-- [ ] 处理非法 artifactScope 配置的降级逻辑（降级到 predecessor 模式，记录 console.warn） **[S]**
+- [x] 新增 `getArtifactScope` 辅助函数，从 nodeRun.config 中解析 artifactScope 配置，默认返回 "predecessor" **[S]**
+- [x] 新增 `extractPredecessorNodeRunIds` 辅助函数，从 nodeRun.input 中提取前驱节点 ID（支持三种数据结构） **[S]**
+- [x] 重构 `loadNodeArtifacts` 函数，增加 artifactScope 逻辑分支：
+  - [x] predecessor 模式：提取前驱节点 ID，并行查询产物，合并去重 **[M]**
+  - [x] flow 模式：保持当前的双查询合并逻辑（nodeRunId + flowRunId） **[S]**
+  - [x] self 模式：仅查询当前节点的产物 **[S]**
+- [x] 处理前驱节点 ID 提取失败的降级逻辑（降级到 self 模式，记录 console.warn） **[S]**
+- [x] 处理非法 artifactScope 配置的降级逻辑（降级到 predecessor 模式，记录 console.warn） **[S]**
 
 ### 单元测试 (flow-tab-artifacts.test.tsx)
 
-- [ ] 测试：predecessor 模式查询单个前驱节点产物 **[S]**
-- [ ] 测试：predecessor 模式查询多个前驱节点产物并合并 **[S]**
-- [ ] 测试：predecessor 模式前驱节点 ID 缺失时降级到 self 模式 **[S]**
-- [ ] 测试：flow 模式双查询并合并产物（验证 nodeRunId 和 flowRunId 均被调用） **[S]**
-- [ ] 测试：self 模式仅查询当前节点产物 **[S]**
-- [ ] 测试：非法 artifactScope 配置降级到 predecessor 模式 **[S]**
-- [ ] 测试：前驱节点未生成产物时展示空列表 **[S]**
+- [x] 测试：predecessor 模式查询单个前驱节点产物 **[S]**
+- [x] 测试：predecessor 模式查询多个前驱节点产物并合并 **[S]**
+- [x] 测试：predecessor 模式前驱节点 ID 缺失时降级到 self 模式 **[S]**
+- [x] 测试：flow 模式双查询并合并产物（验证 nodeRunId 和 flowRunId 均被调用） **[S]**
+- [x] 测试：self 模式仅查询当前节点产物 **[S]**
+- [x] 测试：非法 artifactScope 配置降级到 predecessor 模式 **[S]**
+- [x] 测试：前驱节点未生成产物时展示空列表 **[S]**
 
 ## Spec 更新 (openspec/specs)
 
 ### flow-engine 模块
 
-- [ ] 归档 `MODIFIED-2026-02-18-human-review-artifact-scope.md` 到 `openspec/specs/flow-engine/2026-02-14-flow-execution.md`（追加到文件末尾） **[S]**
+- [x] 归档 `MODIFIED-2026-02-18-human-review-artifact-scope.md` 到 `openspec/specs/flow-engine/2026-02-14-flow-execution.md`（追加到文件末尾） **[S]**
 
 ### artifact 模块
 
-- [ ] 归档 `MODIFIED-2026-02-18-artifact-scope-query.md` 到 `openspec/specs/artifact/2026-02-16-artifact-management.md`（追加到文件末尾） **[S]**
+- [x] 归档 `MODIFIED-2026-02-18-artifact-scope-query.md` 到 `openspec/specs/artifact/2026-02-16-artifact-management.md`（追加到文件末尾） **[S]**
 
 ## 集成测试
 
