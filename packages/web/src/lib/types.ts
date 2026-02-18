@@ -85,7 +85,7 @@ export interface TimelineEvent {
   flowRunId: string | null
   nodeRunId: string | null
   eventType: string
-  content: Record<string, any>
+  content: string | Record<string, any>
   createdAt: string
 }
 
