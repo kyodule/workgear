@@ -92,14 +92,24 @@ Agent: [生成新方案...] [超时]
 
 ## 3. 架构设计
 
-### 3.1 新增节点类型：`understanding_task`
+### 3.1 使用 `agent_task` + `transient` 配置
 
 ```yaml
-# 新节点类型：understanding_task
+# 使用 agent_task 节点类型 + transient 配置标志
 # 特点：
 # - 输出为 Markdown 文档（非 Git 产物）
 # - 存储在 node_runs.transient_artifacts 中
 # - 可被后续节点通过 {{upstream.xxx}} 引用
+
+- id: understand_requirement
+  name: "理解需求"
+  type: agent_task
+  agent:
+    role: "requirement-analyst"
+  config:
+    mode: understand
+    transient: true  # 标记为瞬态产物
+  timeout: 10m
 ```
 
 ### 3.2 新增产物类型：`transient_artifact`
@@ -114,10 +124,10 @@ Agent: [生成新方案...] [超时]
 ### 3.3 数据流
 
 ```
-submit_requirement (human_review)
+submit_requirement (human_input)
   ↓ output: {requirement_text, priority, ...}
   
-understand_requirement (understanding_task)
+understand_requirement (agent_task + transient: true)
   ↓ input: {{upstream.submit_requirement}}
   ↓ output: {understanding_md: "# 需求理解\n..."}
   ↓ transient_artifacts: {understanding: {type: "markdown", content: "..."}}
@@ -228,7 +238,7 @@ func GetDefaultTimeout(nodeType, mode string) time.Duration {
 **任务清单**：
 1. 数据库迁移：新增 `transient_artifacts` 字段
 2. 更新 Schema 定义：`packages/api/src/db/schema.ts`
-3. DSL 解析：支持 `understanding_task` 节点类型
+3. DSL 解析：支持 `agent_task` + `transient` 配置
 4. DSL 解析：支持 `human_review.editable` 配置
 5. 创建新 Workflow：`spec-driven-dev-v2.yaml`
 6. 更新默认超时配置常量
@@ -242,7 +252,7 @@ func GetDefaultTimeout(nodeType, mode string) time.Duration {
 
 **任务清单**：
 1. 新增 Agent 模式：`understand`（`prompt_builder.go`）
-2. 新增节点处理器：`executeUnderstandingTask`（`node_handlers.go`）
+2. 扩展 `executeAgentTask`：支持 `transient` 配置标志（`node_handlers.go`）
 3. 扩展 `executeHumanReview`：支持编辑并存储 output
 4. 实现 `GetDefaultTimeout` 函数（`adapter.go`）
 5. DB 查询：`UpdateNodeRunTransientArtifacts`（`queries.go`）

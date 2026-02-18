@@ -26,13 +26,12 @@ nodes:
   # ─── 阶段 2：需求理解（新增）───
   - id: understand_requirement
     name: "理解需求"
-    type: understanding_task
-    config:
+    type: agent_task
+    agent:
       role: "requirement-analyst"
+    config:
       mode: understand
-      timeout: 10m
-      max_retry: 3
-      output_format: markdown
+      transient: true
       prompt_template: |
         请快速理解以下需求，输出 Markdown 格式的理解文档（200-500 字）：
         

@@ -49,7 +49,8 @@ type NodeConfigDef struct {
 	Artifact       *ArtifactConfigDef `yaml:"artifact"`
 	ShowArtifacts  bool              `yaml:"show_artifacts"`
 	ArtifactPaths  []string          `yaml:"artifact_paths"`
-	// Understanding task configuration
+	// Transient artifacts configuration
+	Transient      bool     `yaml:"transient"` // 标记输出为瞬态产物（存储到 transient_artifacts）
 	Role          string   `yaml:"role"`
 	MaxRetry      int      `yaml:"max_retry"`
 	OutputFormat  string   `yaml:"output_format"` // markdown / json / text

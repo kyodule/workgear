@@ -237,8 +237,6 @@ func (e *FlowExecutor) executeNode(ctx context.Context, nodeRun *db.NodeRun) err
 	switch nodeType {
 	case "agent_task":
 		return e.executeAgentTask(ctx, nodeRun)
-	case "understanding_task":
-		return e.executeUnderstandingTask(ctx, nodeRun)
 	case "human_review":
 		return e.executeHumanReview(ctx, nodeRun)
 	case "human_input":
