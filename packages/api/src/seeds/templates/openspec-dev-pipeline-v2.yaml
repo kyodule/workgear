@@ -59,7 +59,6 @@ nodes:
         （如果有）
         
         ⚠️ 重要：
-        - 你有 10 分钟完成
         - 不要生成完整的 Spec，只需要理解摘要
         - 不要深入分析代码，只需要列出关键文件
         - 如果不确定，标注"待确认"并继续
@@ -69,7 +68,7 @@ nodes:
     name: "确认需求理解"
     type: human_review
     config:
-      timeout: 10m
+      timeout: 24h
       editable: true
       editable_fields:
         - understanding_md
@@ -135,7 +134,6 @@ nodes:
         5. 生成 tasks.md（按模块分组的实施任务清单，使用 [ ] 复选框格式）
 
         ⚠️ 重要：
-        - 你有 30 分钟完成
         - 请直接生成 OpenSpec 产物，不要重新分析需求
         - 需求理解已经过人工确认，请严格按照理解的内容生成 Spec
 
@@ -149,7 +147,7 @@ nodes:
     name: "审核 Spec"
     type: human_review
     config:
-      timeout: 30m
+      timeout: 24h
       review_target: "{{nodes.generate_spec.outputs}}"
       show_artifacts: true
       artifact_paths:
@@ -192,7 +190,6 @@ nodes:
         5. 所有变更完成后执行 git add -A
 
         ⚠️ 重要：
-        - 你有 60 分钟完成
         - 项目使用 pnpm workspace 管理依赖，优先使用 pnpm
         - 如果某个工具不可用，可以自行安装或使用替代方案，但必须继续完成后续任务
         - 不要因为某一步遇到问题就停止，尝试解决后继续
@@ -228,7 +225,7 @@ nodes:
     name: "最终审核"
     type: human_review
     config:
-      timeout: 30m
+      timeout: 24h
       review_target: "{{nodes.code_review.outputs}}"
       show_artifacts: true
       actions: ["approve", "reject"]
