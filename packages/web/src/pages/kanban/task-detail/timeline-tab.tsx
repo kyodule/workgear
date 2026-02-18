@@ -27,6 +27,94 @@ const eventTypeColors: Record<string, 'default' | 'secondary' | 'destructive' | 
   agent_dispatch_completed: 'default',
 }
 
+// 辅助函数：生成内容摘要
+function getEventSummary(event: TimelineEvent): string {
+  if (typeof event.content === 'string') {
+    return event.content.length > 100
+      ? event.content.slice(0, 100) + '...'
+      : event.content
+  }
+
+  if (event.eventType === 'agent_dispatch_completed') {
+    const content = event.content as Record<string, any>
+    return `选中角色: ${content.selected_role}`
+  }
+
+  return `包含 ${Object.keys(event.content).length} 个字段`
+}
+
+// 辅助函数：渲染事件完整内容
+function renderEventContent(event: TimelineEvent) {
+  if (event.eventType === 'agent_dispatch_completed' && typeof event.content === 'object') {
+    return (
+      <div className="space-y-1">
+        <div>
+          选中角色: <Badge variant="secondary">{(event.content as Record<string, any>).selected_role}</Badge>
+          {(event.content as Record<string, any>).fallback && (
+            <span className="ml-2 text-xs text-amber-600">⚠️ 降级策略</span>
+          )}
+        </div>
+        {(event.content as Record<string, any>).reason && (
+          <div className="text-muted-foreground">{(event.content as Record<string, any>).reason}</div>
+        )}
+      </div>
+    )
+  }
+
+  if (typeof event.content === 'string') {
+    return event.content
+  }
+
+  return JSON.stringify(event.content, null, 2)
+}
+
+// 子组件：单个时间线事件项
+function TimelineEventItem({ event }: { event: TimelineEvent }) {
+  const [expanded, setExpanded] = useState(false)
+
+  const eventLabel = eventTypeLabels[event.eventType] || event.eventType
+  const eventColor = eventTypeColors[event.eventType] || 'outline'
+
+  // 生成内容摘要
+  const summary = getEventSummary(event)
+
+  return (
+    <div className="flex gap-3">
+      {/* 时间线视觉元素 */}
+      <div className="flex flex-col items-center">
+        <div className="h-2 w-2 rounded-full bg-primary" />
+        <div className="flex-1 border-l border-border" />
+      </div>
+
+      {/* 事件内容 */}
+      <div className="flex-1 pb-4">
+        {/* 可点击的事件头部 */}
+        <div
+          className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 rounded px-2 py-1 -mx-2"
+          onClick={() => setExpanded(!expanded)}
+        >
+          <Badge variant={eventColor}>{eventLabel}</Badge>
+          <span className="text-xs text-muted-foreground">
+            {new Date(event.createdAt).toLocaleString('zh-CN')}
+          </span>
+          {!expanded && (
+            <span className="text-sm text-muted-foreground truncate flex-1">
+              {summary}
+            </span>
+          )}
+        </div>
+
+        {/* 展开的完整内容 */}
+        {expanded && (
+          <div className="mt-2 text-sm">
+            {renderEventContent(event)}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function TimelineTab({ taskId }: TimelineTabProps) {
   const [events, setEvents] = useState<TimelineEvent[]>([])
   const [loading, setLoading] = useState(true)
@@ -62,39 +150,7 @@ export function TimelineTab({ taskId }: TimelineTabProps) {
   return (
     <div className="space-y-4">
       {events.map((event) => (
-        <div key={event.id} className="flex gap-3">
-          <div className="flex flex-col items-center">
-            <div className="h-2 w-2 rounded-full bg-primary" />
-            <div className="flex-1 border-l border-border" />
-          </div>
-          <div className="flex-1 pb-4">
-            <div className="flex items-center gap-2">
-              <Badge variant={eventTypeColors[event.eventType] || 'outline'}>
-                {eventTypeLabels[event.eventType] || event.eventType}
-              </Badge>
-              <span className="text-xs text-muted-foreground">
-                {new Date(event.createdAt).toLocaleString('zh-CN')}
-              </span>
-            </div>
-            <div className="mt-1 text-sm">
-              {event.eventType === 'agent_dispatch_completed' && typeof event.content === 'object' ? (
-                <div className="space-y-1">
-                  <div>
-                    选中角色: <Badge variant="secondary">{(event.content as Record<string, any>).selected_role}</Badge>
-                    {(event.content as Record<string, any>).fallback && (
-                      <span className="ml-2 text-xs text-amber-600">⚠️ 降级策略</span>
-                    )}
-                  </div>
-                  {(event.content as Record<string, any>).reason && (
-                    <div className="text-muted-foreground">{(event.content as Record<string, any>).reason}</div>
-                  )}
-                </div>
-              ) : typeof event.content === 'string'
-                ? event.content
-                : JSON.stringify(event.content, null, 2)}
-            </div>
-          </div>
-        </div>
+        <TimelineEventItem key={event.id} event={event} />
       ))}
     </div>
   )
