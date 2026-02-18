@@ -162,3 +162,89 @@ Then 产物按来源节点分组展示
 | 大小 | `h-6 text-xs`（与编辑按钮一致） |
 | 位置 | 编辑按钮左侧 |
 | 变体 | `variant="outline"` |
+
+---
+
+## 产物查询支持前驱节点范围 (2026-02-18, human-review-predecessor-artifact-scope)
+
+### Scenario 12: 前驱节点产物查询（predecessor 模式）
+
+```gherkin
+Given human_review 节点配置 artifactScope: "predecessor"
+  And 前端从 nodeRun.input 中提取到前驱节点 ID: "node_run_123"
+When 前端加载产物
+Then 调用 GET /api/artifacts?nodeRunId=node_run_123
+  And 返回前驱节点关联的所有产物
+  And 产物按 createdAt 升序排序
+  And 在审核界面中使用 <ArtifactPreviewCard> 渲染
+```
+
+### Scenario 13: 多个前驱节点产物合并查询
+
+```gherkin
+Given human_review 节点配置 artifactScope: "predecessor"
+  And 前端从 nodeRun.input 中提取到 2 个前驱节点 ID
+When 前端加载产物
+Then 分别调用 GET /api/artifacts?nodeRunId={id1}
+  And 调用 GET /api/artifacts?nodeRunId={id2}
+  And 合并两个查询结果（按 artifact.id 去重）
+  And 按 createdAt 升序排序
+  And 在审核界面中按来源节点分组展示
+```
+
+### Scenario 14: 整个流程产物查询（flow 模式）
+
+```gherkin
+Given human_review 节点配置 artifactScope: "flow"
+When 前端加载产物
+Then 调用 GET /api/artifacts?nodeRunId={currentNodeRunId}
+  And 调用 GET /api/artifacts?flowRunId={flowRunId}
+  And 按 artifact.id 去重合并（优先保留 nodeData）
+  And 按 createdAt 升序排序
+  And 在审核界面中按来源节点分组展示
+```
+
+### Scenario 15: 仅自身产物查询（self 模式）
+
+```gherkin
+Given human_review 节点配置 artifactScope: "self"
+When 前端加载产物
+Then 仅调用 GET /api/artifacts?nodeRunId={currentNodeRunId}
+  And 返回当前节点自身关联的产物
+  And 不查询上游节点或整个流程的产物
+```
+
+### Scenario 16: 前驱节点产物为空时的展示
+
+```gherkin
+Given human_review 节点配置 artifactScope: "predecessor"
+  And 前驱节点已完成但未生成任何产物
+When 前端查询前驱节点产物
+Then API 返回空数组 []
+  And 审核界面不显示产物区域
+  And 显示原有的 input JSON 和审核操作按钮
+```
+
+### Scenario 17: 产物编辑后刷新（所有模式通用）
+
+```gherkin
+Given 审核界面展示了产物列表（任意 artifactScope 模式）
+  And 用户点击产物卡片的编辑按钮打开编辑器
+When 用户在编辑器中修改产物内容并保存
+Then 编辑器关闭
+  And artifactRefreshKey 递增
+  And 触发产物重新查询（按当前 artifactScope 模式）
+  And 产物卡片显示更新后的内容
+```
+
+### Scenario 18: 产物全屏查看（所有模式通用）
+
+```gherkin
+Given 审核界面展示了产物列表（任意 artifactScope 模式）
+  And 产物卡片处于折叠或展开状态
+When 用户点击产物卡片的全屏按钮（Maximize2 图标）
+Then 打开 <MarkdownFullscreenDialog>
+  And Dialog 标题显示产物标题
+  And Dialog 内容显示产物的完整 Markdown 内容
+  And 关闭 Dialog 后回到审核界面
+```

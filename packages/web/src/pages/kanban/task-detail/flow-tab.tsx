@@ -226,6 +226,41 @@ export function FlowTab({ taskId, refreshKey, onFullscreen }: FlowTabProps) {
   )
 }
 
+// ─── Helper functions for artifact scope ───
+
+function getArtifactScope(nodeRun: NodeRun): 'predecessor' | 'flow' | 'self' {
+  const config = nodeRun.config as { artifactScope?: string } | null | undefined
+  const scope = config?.artifactScope || 'predecessor'
+  
+  if (!['predecessor', 'flow', 'self'].includes(scope)) {
+    console.warn(`Invalid artifactScope: ${scope}, fallback to "predecessor"`)
+    return 'predecessor'
+  }
+  
+  return scope as 'predecessor' | 'flow' | 'self'
+}
+
+function extractPredecessorNodeRunIds(input: any): string[] {
+  if (!input) return []
+  
+  // 优先级 1: predecessorNodeRunIds（数组）
+  if (Array.isArray(input.predecessorNodeRunIds)) {
+    return input.predecessorNodeRunIds.filter((id: any) => typeof id === 'string')
+  }
+  
+  // 优先级 2: predecessorNodeRunId（单个）
+  if (typeof input.predecessorNodeRunId === 'string') {
+    return [input.predecessorNodeRunId]
+  }
+  
+  // 优先级 3: upstream.nodeRunId（嵌套）
+  if (input.upstream && typeof input.upstream.nodeRunId === 'string') {
+    return [input.upstream.nodeRunId]
+  }
+  
+  return []
+}
+
 // ─── NodeRunItem with inline review panel ───
 
 function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifactRefreshKey, onEditArtifact, onFullscreen }: {
@@ -281,31 +316,68 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
 
   async function loadNodeArtifacts() {
     try {
-      // 1. 查询当前节点关联的产物
-      const nodeData = await api.get(`artifacts?nodeRunId=${nodeRun.id}`).json<Artifact[]>()
-
-      // 2. 如果是 human_review 类型，同时查询整个 flowRun 的产物并合并
+      let artifacts: Artifact[] = []
+      
       if (nodeRun.nodeType === 'human_review') {
-        const flowData = await api.get(`artifacts?flowRunId=${nodeRun.flowRunId}`).json<Artifact[]>()
+        const scope = getArtifactScope(nodeRun)
         
-        // 按 artifact.id 去重合并（优先保留 nodeData 中的记录）
-        const artifactMap = new Map<string, Artifact>()
-        for (const artifact of flowData) {
-          artifactMap.set(artifact.id, artifact)
+        if (scope === 'predecessor') {
+          // 模式 1: 查询前驱节点产物
+          const predecessorIds = extractPredecessorNodeRunIds(nodeRun.input)
+          
+          if (predecessorIds.length > 0) {
+            // 并行查询所有前驱节点的产物
+            const results = await Promise.all(
+              predecessorIds.map(id => 
+                api.get(`artifacts?nodeRunId=${id}`).json<Artifact[]>()
+              )
+            )
+            
+            // 合并并去重
+            const artifactMap = new Map<string, Artifact>()
+            for (const result of results) {
+              for (const artifact of result) {
+                artifactMap.set(artifact.id, artifact)
+              }
+            }
+            
+            artifacts = Array.from(artifactMap.values()).sort(
+              (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+            )
+          } else {
+            // 降级到 self 模式
+            console.warn('No predecessor node IDs found, fallback to self mode')
+            const nodeData = await api.get(`artifacts?nodeRunId=${nodeRun.id}`).json<Artifact[]>()
+            artifacts = nodeData
+          }
+        } else if (scope === 'flow') {
+          // 模式 2: 查询整个流程产物（保持当前行为）
+          const nodeData = await api.get(`artifacts?nodeRunId=${nodeRun.id}`).json<Artifact[]>()
+          const flowData = await api.get(`artifacts?flowRunId=${nodeRun.flowRunId}`).json<Artifact[]>()
+          
+          const artifactMap = new Map<string, Artifact>()
+          for (const artifact of flowData) {
+            artifactMap.set(artifact.id, artifact)
+          }
+          for (const artifact of nodeData) {
+            artifactMap.set(artifact.id, artifact)
+          }
+          
+          artifacts = Array.from(artifactMap.values()).sort(
+            (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          )
+        } else {
+          // 模式 3: 仅查询自身产物
+          const nodeData = await api.get(`artifacts?nodeRunId=${nodeRun.id}`).json<Artifact[]>()
+          artifacts = nodeData
         }
-        for (const artifact of nodeData) {
-          artifactMap.set(artifact.id, artifact)
-        }
-        
-        // 按 createdAt 排序，保证展示稳定性
-        const merged = Array.from(artifactMap.values()).sort(
-          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-        )
-        
-        setNodeArtifacts(merged)
       } else {
-        setNodeArtifacts(nodeData)
+        // 非 human_review 节点，仅查询自身产物
+        const nodeData = await api.get(`artifacts?nodeRunId=${nodeRun.id}`).json<Artifact[]>()
+        artifacts = nodeData
       }
+      
+      setNodeArtifacts(artifacts)
     } catch (error) {
       console.error('Failed to load node artifacts:', error)
     }

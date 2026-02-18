@@ -90,6 +90,7 @@ function makeNodeRun(overrides: Partial<NodeRun> = {}): NodeRun {
     nodeName: '人工审核',
     status: 'waiting_human',
     attempt: 1,
+    config: null,
     input: { review_target: { result: '{}' } },
     output: null,
     error: null,
@@ -175,7 +176,7 @@ describe('FlowTab - Artifact Review Display', () => {
 
     const allNodes = [
       makeNodeRun({ id: 'upstream-node-run-1', nodeId: 'agent-1', nodeType: 'agent_task', nodeName: '代码生成', status: 'completed' }),
-      makeNodeRun(),
+      makeNodeRun({ config: { artifactScope: 'flow' } }),
     ]
 
     setupApiResponses({
@@ -219,7 +220,7 @@ describe('FlowTab - Artifact Review Display', () => {
 
     const allNodes = [
       makeNodeRun({ id: 'upstream-node-run-1', nodeId: 'agent-1', nodeType: 'agent_task', nodeName: '代码生成', status: 'completed' }),
-      makeNodeRun({ id: 'node-run-1', nodeId: 'node-1', nodeType: 'human_review', nodeName: '人工审核', status: 'waiting_human' }),
+      makeNodeRun({ id: 'node-run-1', nodeId: 'node-1', nodeType: 'human_review', nodeName: '人工审核', status: 'waiting_human', config: { artifactScope: 'flow' } }),
     ]
 
     setupApiResponses({
@@ -248,6 +249,7 @@ describe('FlowTab - Artifact Review Display', () => {
       reviewAction: 'approve',
       output: { result: 'approved' },
       completedAt: '2026-02-18T01:00:00Z',
+      config: { artifactScope: 'flow' },
     })
 
     const upstreamNode = makeNodeRun({ 
@@ -304,7 +306,7 @@ describe('FlowTab - Artifact Review Display', () => {
 
     const allNodes = [
       makeNodeRun({ id: 'upstream-node-run-1', nodeId: 'agent-1', nodeType: 'agent_task', nodeName: '代码生成', status: 'completed' }),
-      makeNodeRun(),
+      makeNodeRun({ config: { artifactScope: 'flow' } }),
     ]
 
     setupApiResponses({
@@ -334,7 +336,7 @@ describe('FlowTab - Artifact Review Display', () => {
     const allNodes = [
       makeNodeRun({ id: 'upstream-1', nodeId: 'agent-1', nodeType: 'agent_task', nodeName: '需求分析', status: 'completed', createdAt: '2026-02-18T00:00:00Z' }),
       makeNodeRun({ id: 'upstream-2', nodeId: 'agent-2', nodeType: 'agent_task', nodeName: '任务拆分', status: 'completed', createdAt: '2026-02-18T00:01:00Z' }),
-      makeNodeRun({ id: 'node-run-1', nodeId: 'node-1', nodeType: 'human_review', nodeName: '人工审核', status: 'waiting_human' }),
+      makeNodeRun({ id: 'node-run-1', nodeId: 'node-1', nodeType: 'human_review', nodeName: '人工审核', status: 'waiting_human', config: { artifactScope: 'flow' } }),
     ]
 
     setupApiResponses({
@@ -361,5 +363,267 @@ describe('FlowTab - Artifact Review Display', () => {
       expect(xuqiufenxi.length).toBeGreaterThanOrEqual(2)
       expect(renwuchaifeng.length).toBeGreaterThanOrEqual(2)
     }, { timeout: 3000 })
+  })
+})
+
+describe('FlowTab - Artifact Scope Configuration', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGet._jsonImpl = undefined
+  })
+
+  it('predecessor mode: queries single predecessor node artifact', async () => {
+    const predecessorArtifact = makeArtifact({ 
+      id: 'a-pred', 
+      nodeRunId: 'predecessor-node-run-1', 
+      title: 'Predecessor Artifact' 
+    })
+
+    const reviewNode = makeNodeRun({
+      id: 'review-node-run-1',
+      config: { artifactScope: 'predecessor' },
+      input: { predecessorNodeRunId: 'predecessor-node-run-1' },
+    })
+
+    const allNodes = [
+      makeNodeRun({ 
+        id: 'predecessor-node-run-1', 
+        nodeId: 'agent-1', 
+        nodeType: 'agent_task', 
+        nodeName: '代码生成', 
+        status: 'completed' 
+      }),
+      reviewNode,
+    ]
+
+    let artifactQueryUrl = ''
+    mockGet._jsonImpl = (url: string) => {
+      if (url.startsWith('flow-runs?taskId=')) return Promise.resolve([makeFlowRun()])
+      if (url.match(/^flow-runs\/[^/]+\/nodes$/)) return Promise.resolve(allNodes)
+      if (url.startsWith('artifacts?nodeRunId=')) {
+        artifactQueryUrl = url
+        if (url.includes('predecessor-node-run-1')) {
+          return Promise.resolve([predecessorArtifact])
+        }
+        return Promise.resolve([])
+      }
+      return Promise.resolve([])
+    }
+
+    render(<FlowTab taskId="task-1" onFullscreen={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('artifact-card-a-pred')).toBeInTheDocument()
+    })
+
+    // Should only query predecessor node, not flowRunId
+    expect(artifactQueryUrl).toContain('predecessor-node-run-1')
+    const getCalls = mockGet.mock.calls.map((c: any[]) => c[0])
+    expect(getCalls.some((url: string) => url.startsWith('artifacts?flowRunId='))).toBe(false)
+  })
+
+  it('predecessor mode: queries multiple predecessor nodes and merges', async () => {
+    const artifact1 = makeArtifact({ 
+      id: 'a1', 
+      nodeRunId: 'pred-1', 
+      title: 'Artifact 1' 
+    })
+    const artifact2 = makeArtifact({ 
+      id: 'a2', 
+      nodeRunId: 'pred-2', 
+      title: 'Artifact 2' 
+    })
+
+    const reviewNode = makeNodeRun({
+      id: 'review-node-run-1',
+      config: { artifactScope: 'predecessor' },
+      input: { predecessorNodeRunIds: ['pred-1', 'pred-2'] },
+    })
+
+    const allNodes = [
+      makeNodeRun({ id: 'pred-1', nodeId: 'agent-1', nodeType: 'agent_task', status: 'completed' }),
+      makeNodeRun({ id: 'pred-2', nodeId: 'agent-2', nodeType: 'agent_task', status: 'completed' }),
+      reviewNode,
+    ]
+
+    mockGet._jsonImpl = (url: string) => {
+      if (url.startsWith('flow-runs?taskId=')) return Promise.resolve([makeFlowRun()])
+      if (url.match(/^flow-runs\/[^/]+\/nodes$/)) return Promise.resolve(allNodes)
+      if (url.includes('pred-1')) return Promise.resolve([artifact1])
+      if (url.includes('pred-2')) return Promise.resolve([artifact2])
+      return Promise.resolve([])
+    }
+
+    render(<FlowTab taskId="task-1" onFullscreen={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('artifact-card-a1')).toBeInTheDocument()
+      expect(screen.getByTestId('artifact-card-a2')).toBeInTheDocument()
+    })
+  })
+
+  it('predecessor mode: fallback to self when predecessor ID missing', async () => {
+    const selfArtifact = makeArtifact({ 
+      id: 'a-self', 
+      nodeRunId: 'review-node-run-1', 
+      title: 'Self Artifact' 
+    })
+
+    const reviewNode = makeNodeRun({
+      id: 'review-node-run-1',
+      config: { artifactScope: 'predecessor' },
+      input: {}, // No predecessor ID
+    })
+
+    const allNodes = [reviewNode]
+
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    mockGet._jsonImpl = (url: string) => {
+      if (url.startsWith('flow-runs?taskId=')) return Promise.resolve([makeFlowRun()])
+      if (url.match(/^flow-runs\/[^/]+\/nodes$/)) return Promise.resolve(allNodes)
+      if (url.includes('review-node-run-1')) return Promise.resolve([selfArtifact])
+      return Promise.resolve([])
+    }
+
+    render(<FlowTab taskId="task-1" onFullscreen={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('artifact-card-a-self')).toBeInTheDocument()
+    })
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith('No predecessor node IDs found, fallback to self mode')
+    consoleWarnSpy.mockRestore()
+  })
+
+  it('flow mode: queries both nodeRunId and flowRunId', async () => {
+    const nodeArtifact = makeArtifact({ id: 'a-node', nodeRunId: 'review-node-run-1', title: 'Node Artifact' })
+    const flowArtifact = makeArtifact({ id: 'a-flow', nodeRunId: 'upstream-1', title: 'Flow Artifact' })
+
+    const reviewNode = makeNodeRun({
+      id: 'review-node-run-1',
+      config: { artifactScope: 'flow' },
+    })
+
+    const allNodes = [
+      makeNodeRun({ id: 'upstream-1', nodeId: 'agent-1', nodeType: 'agent_task', status: 'completed' }),
+      reviewNode,
+    ]
+
+    mockGet._jsonImpl = (url: string) => {
+      if (url.startsWith('flow-runs?taskId=')) return Promise.resolve([makeFlowRun()])
+      if (url.match(/^flow-runs\/[^/]+\/nodes$/)) return Promise.resolve(allNodes)
+      if (url.includes('nodeRunId=review-node-run-1')) return Promise.resolve([nodeArtifact])
+      if (url.includes('flowRunId=')) return Promise.resolve([nodeArtifact, flowArtifact])
+      return Promise.resolve([])
+    }
+
+    render(<FlowTab taskId="task-1" onFullscreen={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('artifact-card-a-node')).toBeInTheDocument()
+      expect(screen.getByTestId('artifact-card-a-flow')).toBeInTheDocument()
+    })
+
+    const getCalls = mockGet.mock.calls.map((c: any[]) => c[0])
+    expect(getCalls.some((url: string) => url.includes('nodeRunId=review-node-run-1'))).toBe(true)
+    expect(getCalls.some((url: string) => url.startsWith('artifacts?flowRunId='))).toBe(true)
+  })
+
+  it('self mode: queries only current node', async () => {
+    const selfArtifact = makeArtifact({ 
+      id: 'a-self', 
+      nodeRunId: 'review-node-run-1', 
+      title: 'Self Artifact' 
+    })
+
+    const reviewNode = makeNodeRun({
+      id: 'review-node-run-1',
+      config: { artifactScope: 'self' },
+    })
+
+    const allNodes = [reviewNode]
+
+    mockGet._jsonImpl = (url: string) => {
+      if (url.startsWith('flow-runs?taskId=')) return Promise.resolve([makeFlowRun()])
+      if (url.match(/^flow-runs\/[^/]+\/nodes$/)) return Promise.resolve(allNodes)
+      if (url.includes('review-node-run-1')) return Promise.resolve([selfArtifact])
+      return Promise.resolve([])
+    }
+
+    render(<FlowTab taskId="task-1" onFullscreen={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('artifact-card-a-self')).toBeInTheDocument()
+    })
+
+    const getCalls = mockGet.mock.calls.map((c: any[]) => c[0])
+    expect(getCalls.some((url: string) => url.startsWith('artifacts?flowRunId='))).toBe(false)
+  })
+
+  it('invalid artifactScope: fallback to predecessor', async () => {
+    const predecessorArtifact = makeArtifact({ 
+      id: 'a-pred', 
+      nodeRunId: 'pred-1', 
+      title: 'Predecessor Artifact' 
+    })
+
+    const reviewNode = makeNodeRun({
+      id: 'review-node-run-1',
+      config: { artifactScope: 'invalid_value' },
+      input: { predecessorNodeRunId: 'pred-1' },
+    })
+
+    const allNodes = [
+      makeNodeRun({ id: 'pred-1', nodeId: 'agent-1', nodeType: 'agent_task', status: 'completed' }),
+      reviewNode,
+    ]
+
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    mockGet._jsonImpl = (url: string) => {
+      if (url.startsWith('flow-runs?taskId=')) return Promise.resolve([makeFlowRun()])
+      if (url.match(/^flow-runs\/[^/]+\/nodes$/)) return Promise.resolve(allNodes)
+      if (url.includes('pred-1')) return Promise.resolve([predecessorArtifact])
+      return Promise.resolve([])
+    }
+
+    render(<FlowTab taskId="task-1" onFullscreen={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('artifact-card-a-pred')).toBeInTheDocument()
+    })
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith('Invalid artifactScope: invalid_value, fallback to "predecessor"')
+    consoleWarnSpy.mockRestore()
+  })
+
+  it('predecessor mode: shows empty list when predecessor has no artifacts', async () => {
+    const reviewNode = makeNodeRun({
+      id: 'review-node-run-1',
+      config: { artifactScope: 'predecessor' },
+      input: { predecessorNodeRunId: 'pred-1' },
+    })
+
+    const allNodes = [
+      makeNodeRun({ id: 'pred-1', nodeId: 'agent-1', nodeType: 'agent_task', status: 'completed' }),
+      reviewNode,
+    ]
+
+    mockGet._jsonImpl = (url: string) => {
+      if (url.startsWith('flow-runs?taskId=')) return Promise.resolve([makeFlowRun()])
+      if (url.match(/^flow-runs\/[^/]+\/nodes$/)) return Promise.resolve(allNodes)
+      if (url.includes('pred-1')) return Promise.resolve([])
+      return Promise.resolve([])
+    }
+
+    render(<FlowTab taskId="task-1" onFullscreen={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('待审核内容')).toBeInTheDocument()
+    })
+
+    // Should show input JSON when no artifacts
+    expect(screen.getByTestId('code-block')).toBeInTheDocument()
   })
 })
