@@ -241,6 +241,8 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
   const [feedback, setFeedback] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [nodeArtifacts, setNodeArtifacts] = useState<Artifact[]>([])
+  const [editingTransient, setEditingTransient] = useState(false)
+  const [transientContent, setTransientContent] = useState('')
   const isFlowTerminal = flowStatus === 'cancelled' || flowStatus === 'completed'
 
   // Auto-expand when waiting for human
@@ -259,6 +261,16 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
       setFeedback(nodeRun.reviewComment)
     }
   }, [nodeRun.status, nodeRun.reviewComment])
+
+  // Initialize transient content when node has transient artifacts
+  useEffect(() => {
+    if (nodeRun.transientArtifacts) {
+      const firstKey = Object.keys(nodeRun.transientArtifacts)[0]
+      if (firstKey && nodeRun.transientArtifacts[firstKey]?.content) {
+        setTransientContent(nodeRun.transientArtifacts[firstKey].content)
+      }
+    }
+  }, [nodeRun.transientArtifacts])
 
   // Load artifacts when expanded
   useEffect(() => {
@@ -302,14 +314,26 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
   async function handleReview(action: 'approve' | 'reject' | 'edit_and_approve', force?: boolean) {
     setSubmitting(true)
     try {
-      await api.post(`node-runs/${nodeRun.id}/review`, {
-        json: {
-          action,
-          feedback: action === 'reject' ? feedback : undefined,
-          force: force || false,
-        },
-      })
+      const body: any = {
+        action,
+        feedback: action === 'reject' ? feedback : undefined,
+        force: force || false,
+      }
+      
+      // If transient artifact was edited, include it in the request
+      if (editingTransient && transientContent && nodeRun.transientArtifacts) {
+        const key = Object.keys(nodeRun.transientArtifacts)[0]
+        if (key) {
+          body.output = {
+            [key]: transientContent,
+            _transient: true,
+          }
+        }
+      }
+      
+      await api.post(`node-runs/${nodeRun.id}/review`, { json: body })
       setFeedback('')
+      setEditingTransient(false)
       onActionComplete()
     } catch (error: any) {
       alert(`操作失败: ${error.message}`)
@@ -387,6 +411,61 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
       {/* Expanded content */}
       {expanded && (
         <div className="border-t px-3 py-3 space-y-3">
+          {/* Show transient artifacts (e.g., requirement understanding) */}
+          {nodeRun.transientArtifacts && Object.keys(nodeRun.transientArtifacts).length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs font-medium text-muted-foreground">需求理解</p>
+                {nodeRun.status === 'waiting_human' && !editingTransient && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 text-xs"
+                    onClick={() => setEditingTransient(true)}
+                  >
+                    <Pencil className="mr-1 h-3 w-3" />
+                    编辑
+                  </Button>
+                )}
+              </div>
+              {editingTransient ? (
+                <div className="space-y-2">
+                  <Textarea
+                    value={transientContent}
+                    onChange={(e) => setTransientContent(e.target.value)}
+                    rows={12}
+                    className="text-sm font-mono"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => setEditingTransient(false)}
+                    >
+                      完成编辑
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const firstKey = Object.keys(nodeRun.transientArtifacts!)[0]
+                        if (firstKey && nodeRun.transientArtifacts![firstKey]?.content) {
+                          setTransientContent(nodeRun.transientArtifacts![firstKey].content)
+                        }
+                        setEditingTransient(false)
+                      }}
+                    >
+                      取消
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="prose prose-sm max-w-none p-3 bg-muted/30 rounded border text-sm whitespace-pre-wrap">
+                  {transientContent}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Show output for completed nodes */}
           {nodeRun.output && (
             <div>
