@@ -270,14 +270,30 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
   async function loadNodeArtifacts() {
     try {
       // 1. 查询当前节点关联的产物
-      let data = await api.get(`artifacts?nodeRunId=${nodeRun.id}`).json<Artifact[]>()
+      const nodeData = await api.get(`artifacts?nodeRunId=${nodeRun.id}`).json<Artifact[]>()
 
-      // 2. 如果当前节点无产物且是 human_review 类型，查询整个 flowRun 的产物
-      if (data.length === 0 && nodeRun.nodeType === 'human_review') {
-        data = await api.get(`artifacts?flowRunId=${nodeRun.flowRunId}`).json<Artifact[]>()
+      // 2. 如果是 human_review 类型，同时查询整个 flowRun 的产物并合并
+      if (nodeRun.nodeType === 'human_review') {
+        const flowData = await api.get(`artifacts?flowRunId=${nodeRun.flowRunId}`).json<Artifact[]>()
+        
+        // 按 artifact.id 去重合并（优先保留 nodeData 中的记录）
+        const artifactMap = new Map<string, Artifact>()
+        for (const artifact of flowData) {
+          artifactMap.set(artifact.id, artifact)
+        }
+        for (const artifact of nodeData) {
+          artifactMap.set(artifact.id, artifact)
+        }
+        
+        // 按 createdAt 排序，保证展示稳定性
+        const merged = Array.from(artifactMap.values()).sort(
+          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        )
+        
+        setNodeArtifacts(merged)
+      } else {
+        setNodeArtifacts(nodeData)
       }
-
-      setNodeArtifacts(data)
     } catch (error) {
       console.error('Failed to load node artifacts:', error)
     }
@@ -383,20 +399,17 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
             </div>
           )}
 
-          {/* Show artifact link if present */}
+          {/* Show artifacts grouped by source node */}
           {nodeArtifacts.length > 0 && (
             <div>
               <p className="text-xs font-medium text-muted-foreground mb-1">产物</p>
-              <div className="space-y-1">
-                {nodeArtifacts.map((artifact) => (
-                  <ArtifactPreviewCard
-                    key={artifact.id}
-                    artifact={artifact}
-                    onEdit={(a, content, version) => onEditArtifact(a, content, version)}
-                    onFullscreen={onFullscreen}
-                  />
-                ))}
-              </div>
+              <ArtifactsBySourceNode
+                artifacts={nodeArtifacts}
+                flowRunId={nodeRun.flowRunId}
+                canEdit={nodeRun.status === 'waiting_human' && nodeRun.nodeType === 'human_review'}
+                onEdit={onEditArtifact}
+                onFullscreen={onFullscreen}
+              />
             </div>
           )}
 
@@ -544,6 +557,123 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
               {nodeRun.reviewComment && <span> — {nodeRun.reviewComment}</span>}
             </div>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Artifacts grouped by source node ───
+
+function ArtifactsBySourceNode({
+  artifacts,
+  flowRunId,
+  canEdit,
+  onEdit,
+  onFullscreen,
+}: {
+  artifacts: Artifact[]
+  flowRunId: string
+  canEdit: boolean
+  onEdit: (artifact: Artifact, content: string, version: number) => void
+  onFullscreen?: (title: string, content: string) => void
+}) {
+  const [nodeRunsMap, setNodeRunsMap] = useState<Map<string, NodeRun>>(new Map())
+
+  // Load node runs for the flow to get node names for group titles
+  useEffect(() => {
+    if (!flowRunId) return
+    api.get(`flow-runs/${flowRunId}/nodes`).json<NodeRun[]>().then((nodes) => {
+      const map = new Map<string, NodeRun>()
+      for (const nr of nodes) {
+        map.set(nr.id, nr)
+      }
+      setNodeRunsMap(map)
+    }).catch((err) => {
+      console.error('Failed to load node runs for grouping:', err)
+    })
+  }, [flowRunId])
+
+  // Group artifacts by nodeRunId
+  const byNode = new Map<string | null, Artifact[]>()
+  for (const artifact of artifacts) {
+    const key = artifact.nodeRunId
+    if (!byNode.has(key)) {
+      byNode.set(key, [])
+    }
+    byNode.get(key)!.push(artifact)
+  }
+
+  // Artifacts without nodeRunId
+  const noNodeArtifacts = byNode.get(null) || []
+  byNode.delete(null)
+
+  // Sort groups by node order (use nodeRunsMap order)
+  const sortedNodeIds = [...byNode.keys()].sort((a, b) => {
+    const nodeA = nodeRunsMap.get(a!)
+    const nodeB = nodeRunsMap.get(b!)
+    // Sort by createdAt of the node run (earlier nodes first)
+    if (nodeA && nodeB) {
+      return new Date(nodeA.createdAt).getTime() - new Date(nodeB.createdAt).getTime()
+    }
+    return 0
+  })
+
+  // If only one group and no ungrouped artifacts, skip group headers
+  const singleGroup = sortedNodeIds.length === 1 && noNodeArtifacts.length === 0
+
+  return (
+    <div className="space-y-2">
+      {sortedNodeIds.map((nodeRunId) => {
+        const groupArtifacts = byNode.get(nodeRunId)!
+          .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        const nodeRun = nodeRunsMap.get(nodeRunId!)
+        const nodeName = nodeRun?.nodeName || nodeRun?.nodeId || '未知节点'
+        const nodeType = nodeRun?.nodeType
+
+        return (
+          <div key={nodeRunId} className="space-y-1">
+            {!singleGroup && (
+              <div className="flex items-center gap-1.5 py-1">
+                <span className="text-xs font-medium">{nodeName}</span>
+                {nodeType && (
+                  <span className="text-[10px] text-muted-foreground">({nodeType})</span>
+                )}
+              </div>
+            )}
+            <div className={singleGroup ? 'space-y-1' : 'pl-2 space-y-1'}>
+              {groupArtifacts.map((artifact) => (
+                <ArtifactPreviewCard
+                  key={artifact.id}
+                  artifact={artifact}
+                  onEdit={canEdit ? (a, content, version) => onEdit(a, content, version) : undefined}
+                  onFullscreen={onFullscreen}
+                />
+              ))}
+            </div>
+          </div>
+        )
+      })}
+
+      {noNodeArtifacts.length > 0 && (
+        <div className="space-y-1">
+          {!singleGroup && (
+            <div className="py-1">
+              <span className="text-xs font-medium text-muted-foreground">其他产物</span>
+            </div>
+          )}
+          <div className={singleGroup ? 'space-y-1' : 'pl-2 space-y-1'}>
+            {noNodeArtifacts
+              .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+              .map((artifact) => (
+                <ArtifactPreviewCard
+                  key={artifact.id}
+                  artifact={artifact}
+                  onEdit={canEdit ? (a, content, version) => onEdit(a, content, version) : undefined}
+                  onFullscreen={onFullscreen}
+                />
+              ))}
+          </div>
         </div>
       )}
     </div>

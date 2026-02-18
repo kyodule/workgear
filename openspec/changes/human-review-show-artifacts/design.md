@@ -34,7 +34,7 @@ NodeRunItem 展开（expanded = true）
     ▼
 useEffect 触发（依赖: expanded, nodeRun.id, artifactRefreshKey）
     │
-    ├── 条件检查: expanded === true && nodeRun.flowRunId 存在
+    ├── 条件检查: expanded === true && nodeRun.id 存在
     │
     ▼
 GET /api/artifacts?nodeRunId={nodeRun.id}
@@ -42,11 +42,23 @@ GET /api/artifacts?nodeRunId={nodeRun.id}
     ├── 返回当前节点关联产物（可能为空）
     │
     ▼
+nodeType === 'human_review' ?
+    │
+    ├── 是 → GET /api/artifacts?flowRunId={nodeRun.flowRunId}
+    │         │
+    │         ▼
+    │     按 artifact.id 去重合并，按 createdAt 排序
+    │
+    └── 否 → 直接使用 nodeRunId 查询结果
+    │
+    ▼
 setNodeArtifacts(data)
     │
     ▼
-渲染产物列表
-    ├── 有产物 → 渲染 <ArtifactPreviewCard> 列表
+渲染产物列表（按来源节点分组）
+    ├── 有产物 → 渲染 <ArtifactsBySourceNode> 分组展示
+    │   ├── waiting_human 状态 → 传入 onEdit（可编辑）
+    │   └── 其他状态 → 不传 onEdit（仅预览/全屏）
     └── 无产物 → 不渲染产物区域
 ```
 
@@ -89,7 +101,7 @@ NodeRunItem useEffect 重新触发 → 重新加载产物列表
 
 ### 新增文件
 
-无
+无（新增 `ArtifactsBySourceNode` 组件在 flow-tab.tsx 内部定义）
 
 ### 删除文件
 
@@ -133,14 +145,30 @@ NodeRunItem useEffect 重新触发 → 重新加载产物列表
 async function loadNodeArtifacts() {
   try {
     // 1. 查询当前节点关联的产物
-    let data = await api.get(`artifacts?nodeRunId=${nodeRun.id}`).json<Artifact[]>()
+    const nodeData = await api.get(`artifacts?nodeRunId=${nodeRun.id}`).json<Artifact[]>()
 
-    // 2. 如果当前节点无产物且是 human_review 类型，查询整个 flowRun 的产物
-    if (data.length === 0 && nodeRun.nodeType === 'human_review') {
-      data = await api.get(`artifacts?flowRunId=${nodeRun.flowRunId}`).json<Artifact[]>()
+    // 2. 如果是 human_review 类型，同时查询整个 flowRun 的产物并合并
+    if (nodeRun.nodeType === 'human_review') {
+      const flowData = await api.get(`artifacts?flowRunId=${nodeRun.flowRunId}`).json<Artifact[]>()
+      
+      // 按 artifact.id 去重合并（优先保留 nodeData 中的记录）
+      const artifactMap = new Map<string, Artifact>()
+      for (const artifact of flowData) {
+        artifactMap.set(artifact.id, artifact)
+      }
+      for (const artifact of nodeData) {
+        artifactMap.set(artifact.id, artifact)
+      }
+      
+      // 按 createdAt 排序，保证展示稳定性
+      const merged = Array.from(artifactMap.values()).sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      )
+      
+      setNodeArtifacts(merged)
+    } else {
+      setNodeArtifacts(nodeData)
     }
-
-    setNodeArtifacts(data)
   } catch (error) {
     console.error('Failed to load node artifacts:', error)
   }
@@ -158,20 +186,17 @@ async function loadNodeArtifacts() {
     {/* Show output for completed nodes */}
     {nodeRun.output && ( ... )}
 
-    {/* ★ 产物展示区域 — 移到 input 之前 */}
+    {/* ★ 产物展示区域 — 按来源节点分组，移到 input 之前 */}
     {nodeArtifacts.length > 0 && (
       <div>
         <p className="text-xs font-medium text-muted-foreground mb-1">产物</p>
-        <div className="space-y-1">
-          {nodeArtifacts.map((artifact) => (
-            <ArtifactPreviewCard
-              key={artifact.id}
-              artifact={artifact}
-              onEdit={(a, content, version) => onEditArtifact(a, content, version)}
-              onFullscreen={onFullscreen}
-            />
-          ))}
-        </div>
+        <ArtifactsBySourceNode
+          artifacts={nodeArtifacts}
+          flowRunId={nodeRun.flowRunId}
+          canEdit={nodeRun.status === 'waiting_human' && nodeRun.nodeType === 'human_review'}
+          onEdit={onEditArtifact}
+          onFullscreen={onFullscreen}
+        />
       </div>
     )}
 
@@ -190,6 +215,8 @@ async function loadNodeArtifacts() {
 
 关键变更点：
 - 产物区域在 output 之后、input 之前渲染
+- 产物按来源节点分组展示，每组显示节点名称作为分组标题
+- 仅在 `waiting_human` 状态的 `human_review` 节点中传入 `onEdit`，已完成节点不显示编辑按钮
 - 当有产物时，隐藏 JSON 格式的 input 展示（产物已提供更好的阅读体验）
 - 当无产物时，保持原有的 input JSON 展示
 
@@ -197,9 +224,22 @@ async function loadNodeArtifacts() {
 
 ## 测试策略
 
-- 手动验证：启动包含 agent_task → human_review 的流程 → 等待 human_review → 确认审核界面展示上游产物
-- 手动验证：在审核界面展开产物卡片 → 确认 Markdown 内容正确渲染
-- 手动验证：点击全屏按钮 → 确认全屏 Dialog 正常打开
-- 手动验证：点击编辑按钮 → 修改内容 → 保存 → 确认产物列表自动刷新
-- 手动验证：上游节点无产物时 → 确认审核界面不显示产物区域，显示原有 input JSON
-- 手动验证：产物 API 请求失败时 → 确认审核操作按钮正常可用
+### 自动化测试
+
+- 单元测试：`packages/web/src/pages/kanban/task-detail/__tests__/flow-tab-artifacts.test.tsx`
+  - 有产物时隐藏 input JSON
+  - 无产物时展示 input JSON
+  - human_review 节点双查询并合并产物
+  - completed 状态下不显示编辑按钮
+  - waiting_human 状态下显示编辑按钮
+  - 产物按来源节点分组展示
+
+### 手动验证
+
+- 启动包含 agent_task → human_review 的流程 → 等待 human_review → 确认审核界面展示上游产物
+- 在审核界面展开产物卡片 → 确认 Markdown 内容正确渲染
+- 点击全屏按钮 → 确认全屏 Dialog 正常打开
+- 点击编辑按钮 → 修改内容 → 保存 → 确认产物列表自动刷新
+- 上游节点无产物时 → 确认不显示产物区域，显示原有 input JSON
+- 产物 API 请求失败时 → 确认审核操作按钮正常可用
+- 已完成的 human_review 节点 → 确认产物可查看但无编辑按钮
