@@ -115,7 +115,7 @@ function TimelineEventItem({ event }: { event: TimelineEvent }) {
 
         {/* 展开的完整内容 */}
         {expanded && (
-          <div className="mt-2 text-sm">
+          <div className="border-t px-3 py-3 text-sm">
             {renderEventContent(event)}
           </div>
         )}

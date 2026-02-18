@@ -75,7 +75,7 @@ describe('TimelineTab', () => {
       makeEvent({
         id: 'evt-2',
         eventType: 'agent_dispatch_completed',
-        content: { selected_role: 'coder', reason: 'Best fit' } as any,
+        content: { selected_role: 'coder', reason: 'Best fit' },
       }),
     ]
     setupApi(events)
@@ -99,7 +99,7 @@ describe('TimelineTab', () => {
       makeEvent({
         id: 'evt-1',
         eventType: 'agent_dispatch_completed',
-        content: { selected_role: 'reviewer', reason: 'Code review needed', fallback: false } as any,
+        content: { selected_role: 'reviewer', reason: 'Code review needed', fallback: false },
       }),
     ]
     setupApi(events)
@@ -126,7 +126,7 @@ describe('TimelineTab', () => {
       makeEvent({
         id: 'evt-1',
         eventType: 'agent_dispatch_completed',
-        content: { selected_role: 'coder', reason: 'Implement feature' } as any,
+        content: { selected_role: 'coder', reason: 'Implement feature' },
       }),
     ]
     setupApi(events)
@@ -155,7 +155,7 @@ describe('TimelineTab', () => {
       makeEvent({
         id: 'evt-1',
         eventType: 'agent_dispatch_completed',
-        content: { selected_role: 'architect', reason: 'Design needed', fallback: true } as any,
+        content: { selected_role: 'architect', reason: 'Design needed', fallback: true },
       }),
     ]
     setupApi(events)
@@ -193,7 +193,7 @@ describe('TimelineTab', () => {
       makeEvent({
         id: 'evt-1',
         eventType: 'system_event',
-        content: { field1: 'a', field2: 'b', field3: 'c' } as any,
+        content: { field1: 'a', field2: 'b', field3: 'c' },
       }),
     ]
     setupApi(events)
