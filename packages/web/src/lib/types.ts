@@ -165,6 +165,13 @@ export interface FlowRun {
   createdAt: string
 }
 
+export interface TransientArtifact {
+  type: 'markdown' | 'json' | 'text'
+  content: string
+  editedBy?: string
+  editedAt?: string
+}
+
 export interface NodeRun {
   id: string
   flowRunId: string
@@ -182,6 +189,7 @@ export interface NodeRun {
   startedAt: string | null
   completedAt: string | null
   createdAt: string
+  transientArtifacts?: Record<string, TransientArtifact> | null
 }
 
 // Artifact types

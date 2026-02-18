@@ -8,7 +8,7 @@ import { authenticate } from '../middleware/auth.js'
 export async function nodeRunRoutes(app: FastifyInstance) {
   // 所有节点执行路由都需要登录
   app.addHook('preHandler', authenticate)
-  // Get node run details
+  // Get node run details (includes transient artifacts)
   app.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
     const { id } = request.params
 
@@ -21,6 +21,22 @@ export async function nodeRunRoutes(app: FastifyInstance) {
     return nodeRun
   })
 
+  // Get transient artifacts for a node run
+  app.get<{ Params: { id: string } }>('/:id/transient-artifacts', async (request, reply) => {
+    const { id } = request.params
+
+    const [nodeRun] = await db
+      .select({ transientArtifacts: nodeRuns.transientArtifacts })
+      .from(nodeRuns)
+      .where(eq(nodeRuns.id, id))
+
+    if (!nodeRun) {
+      return reply.status(404).send({ error: 'NodeRun not found' })
+    }
+
+    return { artifacts: nodeRun.transientArtifacts || {} }
+  })
+
   // Submit review (approve/reject/edit)
   app.post<{
     Params: { id: string }
@@ -30,10 +46,11 @@ export async function nodeRunRoutes(app: FastifyInstance) {
       force?: boolean
       editedContent?: string
       changeSummary?: string
+      output?: Record<string, any>
     }
   }>('/:id/review', async (request, reply) => {
     const { id } = request.params
-    const { action, feedback, force, editedContent, changeSummary } = request.body
+    const { action, feedback, force, editedContent, changeSummary, output } = request.body
 
     // Validate node exists and is waiting for human
     const [nodeRun] = await db.select().from(nodeRuns).where(eq(nodeRuns.id, id))
@@ -50,6 +67,16 @@ export async function nodeRunRoutes(app: FastifyInstance) {
 
       switch (action) {
         case 'approve':
+          // If output is provided, update transient artifacts before approving
+          if (output) {
+            await db
+              .update(nodeRuns)
+              .set({ 
+                output: JSON.stringify(output),
+                transientArtifacts: output._transient ? output : nodeRun.transientArtifacts
+              })
+              .where(eq(nodeRuns.id, id))
+          }
           result = await orchestrator.approveNode(id)
           break
         case 'reject':
