@@ -217,9 +217,9 @@ func (c *Client) SaveFlowRunDslSnapshot(ctx context.Context, id, dsl string, var
 // CreateNodeRun inserts a new node run
 func (c *Client) CreateNodeRun(ctx context.Context, nr *NodeRun) error {
 	_, err := c.pool.Exec(ctx, `
-		INSERT INTO node_runs (id, flow_run_id, node_id, node_type, node_name, status, attempt, input, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-	`, nr.ID, nr.FlowRunID, nr.NodeID, nr.NodeType, nr.NodeName, nr.Status, nr.Attempt, nr.Input, nr.CreatedAt)
+		INSERT INTO node_runs (id, flow_run_id, node_id, node_type, node_name, status, attempt, input, config, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`, nr.ID, nr.FlowRunID, nr.NodeID, nr.NodeType, nr.NodeName, nr.Status, nr.Attempt, nr.Input, nr.Config, nr.CreatedAt)
 	return err
 }
 
@@ -237,13 +237,13 @@ func (c *Client) AcquireNextNodeRun(ctx context.Context, workerID string) (*Node
 			FOR UPDATE SKIP LOCKED
 		)
 		RETURNING id, flow_run_id, node_id, node_type, node_name, status, attempt,
-		          input, output, error, locked_by, locked_at, started_at, completed_at, created_at
+		          input, output, error, locked_by, locked_at, config, started_at, completed_at, created_at
 	`, StatusRunning, workerID, now)
 
 	var nr NodeRun
 	err := row.Scan(&nr.ID, &nr.FlowRunID, &nr.NodeID, &nr.NodeType, &nr.NodeName,
 		&nr.Status, &nr.Attempt, &nr.Input, &nr.Output, &nr.Error,
-		&nr.LockedBy, &nr.LockedAt, &nr.StartedAt, &nr.CompletedAt, &nr.CreatedAt)
+		&nr.LockedBy, &nr.LockedAt, &nr.Config, &nr.StartedAt, &nr.CompletedAt, &nr.CreatedAt)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil // No queued node runs
@@ -259,7 +259,7 @@ func (c *Client) GetNodeRun(ctx context.Context, id string) (*NodeRun, error) {
 		SELECT id, flow_run_id, node_id, node_type, node_name, status, attempt,
 		       input, output, error, locked_by, locked_at,
 		       review_action, review_comment, reviewed_at,
-		       started_at, completed_at, created_at
+		       config, started_at, completed_at, created_at
 		FROM node_runs WHERE id = $1
 	`, id)
 
@@ -267,7 +267,7 @@ func (c *Client) GetNodeRun(ctx context.Context, id string) (*NodeRun, error) {
 	err := row.Scan(&nr.ID, &nr.FlowRunID, &nr.NodeID, &nr.NodeType, &nr.NodeName,
 		&nr.Status, &nr.Attempt, &nr.Input, &nr.Output, &nr.Error,
 		&nr.LockedBy, &nr.LockedAt, &nr.ReviewAction, &nr.ReviewComment, &nr.ReviewedAt,
-		&nr.StartedAt, &nr.CompletedAt, &nr.CreatedAt)
+		&nr.Config, &nr.StartedAt, &nr.CompletedAt, &nr.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("get node run: %w", err)
 	}
@@ -280,7 +280,7 @@ func (c *Client) GetNodeRunsByFlowRunID(ctx context.Context, flowRunID string) (
 		SELECT id, flow_run_id, node_id, node_type, node_name, status, attempt,
 		       input, output, error, locked_by, locked_at,
 		       review_action, review_comment, reviewed_at,
-		       started_at, completed_at, created_at
+		       config, started_at, completed_at, created_at
 		FROM node_runs WHERE flow_run_id = $1
 		ORDER BY created_at ASC
 	`, flowRunID)
@@ -295,7 +295,7 @@ func (c *Client) GetNodeRunsByFlowRunID(ctx context.Context, flowRunID string) (
 		err := rows.Scan(&nr.ID, &nr.FlowRunID, &nr.NodeID, &nr.NodeType, &nr.NodeName,
 			&nr.Status, &nr.Attempt, &nr.Input, &nr.Output, &nr.Error,
 			&nr.LockedBy, &nr.LockedAt, &nr.ReviewAction, &nr.ReviewComment, &nr.ReviewedAt,
-			&nr.StartedAt, &nr.CompletedAt, &nr.CreatedAt)
+			&nr.Config, &nr.StartedAt, &nr.CompletedAt, &nr.CreatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("scan node run: %w", err)
 		}
@@ -501,7 +501,7 @@ func (c *Client) GetActiveNodeRuns(ctx context.Context, flowRunID string) ([]*No
 func (c *Client) GetNodeRunByFlowAndNode(ctx context.Context, flowRunID, nodeID string) (*NodeRun, error) {
 	row := c.pool.QueryRow(ctx, `
 		SELECT id, flow_run_id, node_id, node_type, node_name, status, attempt,
-		       input, output, error, started_at, completed_at, created_at
+		       input, output, error, config, started_at, completed_at, created_at
 		FROM node_runs
 		WHERE flow_run_id = $1 AND node_id = $2
 		ORDER BY attempt DESC
@@ -511,7 +511,7 @@ func (c *Client) GetNodeRunByFlowAndNode(ctx context.Context, flowRunID, nodeID 
 	var nr NodeRun
 	err := row.Scan(&nr.ID, &nr.FlowRunID, &nr.NodeID, &nr.NodeType, &nr.NodeName,
 		&nr.Status, &nr.Attempt, &nr.Input, &nr.Output, &nr.Error,
-		&nr.StartedAt, &nr.CompletedAt, &nr.CreatedAt)
+		&nr.Config, &nr.StartedAt, &nr.CompletedAt, &nr.CreatedAt)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil

@@ -238,6 +238,21 @@ func (e *FlowExecutor) StartFlow(ctx context.Context, flowRunID, dsl string, var
 			status = db.StatusQueued // Entry nodes start as QUEUED
 		}
 
+		// Extract config from DSL for frontend use
+		var configJSON *string
+		if node.Config != nil {
+			configMap := map[string]any{
+				"artifact_scope": node.Config.ArtifactScope,
+				"mode":           node.Config.Mode,
+				"transient":      node.Config.Transient,
+				"editable":       node.Config.Editable,
+			}
+			if b, err := json.Marshal(configMap); err == nil {
+				s := string(b)
+				configJSON = &s
+			}
+		}
+
 		nr := &db.NodeRun{
 			ID:        uuid.New().String(),
 			FlowRunID: flowRunID,
@@ -246,6 +261,7 @@ func (e *FlowExecutor) StartFlow(ctx context.Context, flowRunID, dsl string, var
 			NodeName:  strPtr(node.Name),
 			Status:    status,
 			Attempt:   1,
+			Config:    configJSON,
 			CreatedAt: time.Now(),
 		}
 
@@ -505,6 +521,21 @@ func (e *FlowExecutor) HandleReject(ctx context.Context, nodeRunID, feedback str
 	input["_reject_from"] = nodeRun.NodeID
 	input["_attempt"] = attempt
 
+	// Extract config from DSL for frontend use
+	var configJSON *string
+	if targetDef.Config != nil {
+		configMap := map[string]any{
+			"artifact_scope": targetDef.Config.ArtifactScope,
+			"mode":           targetDef.Config.Mode,
+			"transient":      targetDef.Config.Transient,
+			"editable":       targetDef.Config.Editable,
+		}
+		if b, err := json.Marshal(configMap); err == nil {
+			s := string(b)
+			configJSON = &s
+		}
+	}
+
 	// Create new QUEUED node run for the target
 	newNodeRun := &db.NodeRun{
 		ID:        uuid.New().String(),
@@ -515,6 +546,7 @@ func (e *FlowExecutor) HandleReject(ctx context.Context, nodeRunID, feedback str
 		Status:    db.StatusQueued,
 		Attempt:   attempt,
 		Input:     jsonStr(input),
+		Config:    configJSON,
 		CreatedAt: time.Now(),
 	}
 
@@ -685,6 +717,21 @@ func (e *FlowExecutor) HandleRetry(ctx context.Context, nodeRunID string) error 
 		return fmt.Errorf("node %s not found in DAG", nodeRun.NodeID)
 	}
 
+	// Extract config from DSL for frontend use
+	var configJSON *string
+	if nodeDef.Config != nil {
+		configMap := map[string]any{
+			"artifact_scope": nodeDef.Config.ArtifactScope,
+			"mode":           nodeDef.Config.Mode,
+			"transient":      nodeDef.Config.Transient,
+			"editable":       nodeDef.Config.Editable,
+		}
+		if b, err := json.Marshal(configMap); err == nil {
+			s := string(b)
+			configJSON = &s
+		}
+	}
+
 	// Create new QUEUED node run
 	newNodeRun := &db.NodeRun{
 		ID:        uuid.New().String(),
@@ -695,6 +742,7 @@ func (e *FlowExecutor) HandleRetry(ctx context.Context, nodeRunID string) error 
 		Status:    db.StatusQueued,
 		Attempt:   nodeRun.Attempt + 1,
 		Input:     nodeRun.Input,
+		Config:    configJSON,
 		CreatedAt: time.Now(),
 	}
 
@@ -750,6 +798,21 @@ func (e *FlowExecutor) walkAndReset(ctx context.Context, flowRun *db.FlowRun, da
 			attempt = existing.Attempt + 1
 		}
 
+		// Extract config from DSL for frontend use
+		var configJSON *string
+		if succDef.Config != nil {
+			configMap := map[string]any{
+				"artifact_scope": succDef.Config.ArtifactScope,
+				"mode":           succDef.Config.Mode,
+				"transient":      succDef.Config.Transient,
+				"editable":       succDef.Config.Editable,
+			}
+			if b, err := json.Marshal(configMap); err == nil {
+				s := string(b)
+				configJSON = &s
+			}
+		}
+
 		// Create a new PENDING node run for this node (including the rejected node itself)
 		nr := &db.NodeRun{
 			ID:        uuid.New().String(),
@@ -759,6 +822,7 @@ func (e *FlowExecutor) walkAndReset(ctx context.Context, flowRun *db.FlowRun, da
 			NodeName:  strPtr(succDef.Name),
 			Status:    db.StatusPending,
 			Attempt:   attempt,
+			Config:    configJSON,
 			CreatedAt: time.Now(),
 		}
 
@@ -855,6 +919,7 @@ func (e *FlowExecutor) HandleRerun(ctx context.Context, nodeRunID string) error 
 		Status:    db.StatusQueued,
 		Attempt:   newAttempt,
 		Input:     nodeRun.Input,
+		Config:    nodeRun.Config,
 		CreatedAt: time.Now(),
 	}
 
@@ -946,6 +1011,21 @@ func (e *FlowExecutor) walkAndResetAll(ctx context.Context, flowRun *db.FlowRun,
 			attempt = existing.Attempt + 1
 		}
 
+		// Extract config from DSL for frontend use
+		var configJSON *string
+		if succDef.Config != nil {
+			configMap := map[string]any{
+				"artifact_scope": succDef.Config.ArtifactScope,
+				"mode":           succDef.Config.Mode,
+				"transient":      succDef.Config.Transient,
+				"editable":       succDef.Config.Editable,
+			}
+			if b, err := json.Marshal(configMap); err == nil {
+				s := string(b)
+				configJSON = &s
+			}
+		}
+
 		// Create a new PENDING node run
 		nr := &db.NodeRun{
 			ID:        uuid.New().String(),
@@ -955,6 +1035,7 @@ func (e *FlowExecutor) walkAndResetAll(ctx context.Context, flowRun *db.FlowRun,
 			NodeName:  strPtr(succDef.Name),
 			Status:    db.StatusPending,
 			Attempt:   attempt,
+			Config:    configJSON,
 			CreatedAt: time.Now(),
 		}
 

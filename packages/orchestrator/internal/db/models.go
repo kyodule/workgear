@@ -39,6 +39,7 @@ type NodeRun struct {
 	ReviewedAt      *time.Time `json:"reviewed_at"`
 	StartedAt       *time.Time `json:"started_at"`
 	CompletedAt     *time.Time `json:"completed_at"`
+	Config             *string    `json:"config"` // JSON string: node configuration from DSL
 	RecoveryCheckpoint *string `json:"recovery_checkpoint"`
 	LogStream          *string `json:"log_stream"` // JSON array: [{type, content, timestamp}, ...]
 	CreatedAt          time.Time  `json:"created_at"`

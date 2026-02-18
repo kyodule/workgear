@@ -229,8 +229,8 @@ export function FlowTab({ taskId, refreshKey, onFullscreen }: FlowTabProps) {
 // ─── Helper functions for artifact scope ───
 
 function getArtifactScope(nodeRun: NodeRun): 'predecessor' | 'flow' | 'self' {
-  const config = nodeRun.config as { artifactScope?: string } | null | undefined
-  const scope = config?.artifactScope || 'predecessor'
+  const config = nodeRun.config as { artifact_scope?: string; artifactScope?: string } | null | undefined
+  const scope = config?.artifact_scope || config?.artifactScope || 'predecessor'
   
   if (!['predecessor', 'flow', 'self'].includes(scope)) {
     console.warn(`Invalid artifactScope: ${scope}, fallback to "predecessor"`)

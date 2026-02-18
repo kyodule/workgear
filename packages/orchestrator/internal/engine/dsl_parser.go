@@ -57,6 +57,8 @@ type NodeConfigDef struct {
 	// Human review editable configuration
 	Editable       bool     `yaml:"editable"`
 	EditableFields []string `yaml:"editable_fields"`
+	// Artifact scope for human_review nodes: predecessor / flow / self
+	ArtifactScope  string   `yaml:"artifact_scope"`
 }
 
 // ArtifactConfigDef defines artifact creation for a node

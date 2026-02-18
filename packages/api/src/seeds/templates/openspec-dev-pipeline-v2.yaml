@@ -73,6 +73,7 @@ nodes:
       editable_fields:
         - understanding_md
       actions: ["approve", "reject"]
+      artifact_scope: predecessor
     on_reject:
       goto: understand_requirement
       max_loops: 3
@@ -156,6 +157,7 @@ nodes:
         - "openspec/changes/{{nodes.generate_change_name.outputs.change_name}}/design.md"
         - "openspec/changes/{{nodes.generate_change_name.outputs.change_name}}/tasks.md"
       actions: ["approve", "reject"]
+      artifact_scope: predecessor
     on_reject:
       goto: generate_spec
       max_loops: "{{params.max_spec_review_loops}}"
@@ -203,22 +205,26 @@ nodes:
         branch_pattern: "feat/{{nodes.generate_change_name.outputs.change_name}}"
         auto_commit: true
 
-  # ─── 阶段 8：代码审核 ───
+  # ─── 阶段 8：Agent 代码审核 ───
   - id: code_review
-    name: "代码审核"
-    type: human_review
+    name: "Agent 代码审核"
+    type: agent_task
+    agent:
+      role: "code-reviewer"
     config:
-      timeout: 30m
-      review_target: "{{nodes.implement_code.outputs}}"
-      show_artifacts: true
-      artifact_paths:
-        - "openspec/changes/{{nodes.generate_change_name.outputs.change_name}}/"
-      actions: ["approve", "reject"]
-    on_reject:
-      goto: implement_code
-      max_loops: "{{params.max_code_review_loops}}"
-      inject:
-        feedback: "{{review.comment}}"
+      mode: review
+      prompt_template: |
+        请 Review 以下代码变更，对照 OpenSpec 的 specs 和 design 文档：
+
+        变更名称：{{nodes.generate_change_name.outputs.change_name}}
+        Spec 文档目录：openspec/changes/{{nodes.generate_change_name.outputs.change_name}}/
+
+        检查维度：
+        1. 完整性：所有 tasks.md 中的任务是否都已实施
+        2. 正确性：实施是否符合 specs 中的需求和场景
+        3. 一致性：代码是否符合 design.md 中的技术方案
+        4. 代码质量：可维护性、安全性、性能
+    timeout: 10m
 
   # ─── 阶段 9：最终审核 ───
   - id: final_review
@@ -229,9 +235,10 @@ nodes:
       review_target: "{{nodes.code_review.outputs}}"
       show_artifacts: true
       actions: ["approve", "reject"]
+      artifact_scope: predecessor
     on_reject:
       goto: implement_code
-      max_loops: 2
+      max_loops: "{{params.max_code_review_loops}}"
       inject:
         feedback: "{{review.comment}}"
 
