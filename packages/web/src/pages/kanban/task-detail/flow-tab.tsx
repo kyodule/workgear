@@ -446,13 +446,13 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
     <div className="rounded-md border">
       {/* Node header */}
       <div
-        className={`flex items-center gap-3 px-3 py-2 ${isClickable ? 'cursor-pointer hover:bg-muted/50' : ''}`}
+        className={`flex items-center gap-3 px-3 py-2 min-h-[44px] ${isClickable ? 'cursor-pointer hover:bg-muted/50' : ''}`}
         onClick={() => isClickable && setExpanded(!expanded)}
       >
         {statusIcons[nodeRun.status] || <Clock className="h-4 w-4" />}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm truncate">{displayName}</span>
+            <span className="text-base md:text-sm truncate">{displayName}</span>
             {nodeRun.nodeType && (
               <span className="text-xs text-muted-foreground">({nodeRun.nodeType})</span>
             )}
@@ -468,14 +468,14 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
           <Button
             size="sm"
             variant="ghost"
-            className="h-6 w-6 p-0 shrink-0"
+            className="h-11 w-11 md:h-6 md:w-6 p-0 shrink-0"
             onClick={(e) => {
               e.stopPropagation()
               onViewLogs()
             }}
             title="查看日志"
           >
-            <FileText className="h-3.5 w-3.5" />
+            <FileText className="h-5 w-5 md:h-3.5 md:w-3.5" />
           </Button>
         )}
       </div>

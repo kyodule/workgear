@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Rnd } from 'react-rnd'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useIsMobile } from '@/hooks/use-is-mobile'
 
 interface DraggableResizableDialogProps {
   open: boolean
@@ -22,6 +23,8 @@ interface DraggableResizableDialogProps {
   contentRef?: React.Ref<HTMLDivElement>
   /** 底部操作栏（如保存/取消按钮） */
   footer?: ReactNode
+  /** 强制全屏模式 */
+  fullScreen?: boolean
 }
 
 /**
@@ -72,7 +75,10 @@ export function DraggableResizableDialog({
   overlay = true,
   contentRef,
   footer,
+  fullScreen: forcedFullScreen,
 }: DraggableResizableDialogProps) {
+  const isMobile = useIsMobile()
+  const fullScreen = forcedFullScreen ?? isMobile
   const dialogRef = useRef<HTMLDivElement>(null)
   const internalContentRef = useRef<HTMLDivElement>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
@@ -137,6 +143,65 @@ export function DraggableResizableDialog({
   }, [open])
 
   if (!open) return null
+
+  // Fullscreen mode for mobile
+  if (fullScreen) {
+    return createPortal(
+      <div
+        className="fixed inset-0 z-50 flex flex-col bg-background animate-in slide-in-from-bottom duration-200"
+        data-draggable-dialog-surface="true"
+      >
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          tabIndex={-1}
+          className="flex h-full flex-col outline-none"
+          data-testid="draggable-resizable-dialog"
+          onKeyDown={handleDialogKeyDown}
+        >
+          {/* 标题栏 */}
+          <div className="flex items-center justify-between border-b px-4 py-3 select-none">
+            <div id={titleId} className="text-base font-semibold">
+              {title}
+            </div>
+            <button
+              onClick={() => onOpenChange(false)}
+              className="flex h-11 w-11 items-center justify-center rounded-sm opacity-70 hover:opacity-100 transition-opacity"
+              aria-label="关闭"
+              data-testid="dialog-close-button"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* 内容区域 */}
+          <div
+            ref={(node) => {
+              internalContentRef.current = node
+              if (typeof contentRef === 'function') {
+                contentRef(node)
+              } else if (contentRef) {
+                ;(contentRef as React.MutableRefObject<HTMLDivElement | null>).current = node
+              }
+            }}
+            className={cn('flex-1 overflow-y-auto p-4', className)}
+          >
+            {children}
+          </div>
+
+          {/* 底部操作栏 */}
+          {footer && (
+            <div className="flex flex-col gap-2 border-t px-4 py-3">
+              {footer}
+            </div>
+          )}
+        </div>
+      </div>,
+      document.body,
+    )
+  }
 
   // 计算视口居中位置，钳制到边界内
   const { offset: centerX, size: actualWidth } = clampedCenter(

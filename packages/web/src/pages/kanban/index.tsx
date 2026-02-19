@@ -201,7 +201,7 @@ export function KanbanPage() {
           </div>
         </div>
 
-        <div className="flex flex-1 gap-4 overflow-x-auto p-6">
+        <div className="flex flex-col gap-4 md:grid md:grid-cols-2 lg:flex lg:flex-row lg:gap-4 lg:overflow-x-auto p-4 md:p-6">
           {columns.map((column) => {
             const columnTasks = tasks
               .filter((task) => task.columnId === column.id)
