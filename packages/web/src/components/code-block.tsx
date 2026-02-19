@@ -36,16 +36,17 @@ export function CodeBlock({ code, language, maxHeight = '12rem', className }: Co
 
   return (
     <div className={cn('relative group', className)}>
-      <pre className={cn('rounded bg-muted p-2 text-xs overflow-auto', maxHeight && `max-h-[${maxHeight}]`)}>
+      <pre className={cn('rounded bg-muted p-2 text-sm md:text-xs overflow-auto')} style={maxHeight ? { maxHeight } : undefined}>
         <code ref={codeRef} className={language ? `language-${language}` : ''}>
           {code}
         </code>
       </pre>
       <button
         onClick={handleCopy}
-        className="absolute top-1.5 right-1.5 rounded p-1 text-muted-foreground
+        className="absolute top-1.5 right-1.5 rounded p-1 min-h-[44px] min-w-[44px] flex items-center justify-center md:min-h-0 md:min-w-0 text-muted-foreground
                    hover:bg-muted-foreground/20 hover:text-foreground transition-colors"
         title="复制"
+        aria-label="复制代码"
       >
         {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
       </button>

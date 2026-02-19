@@ -186,7 +186,7 @@ export function KanbanPage() {
       onDragEnd={handleDragEnd}
     >
       <div className="flex h-full flex-col">
-        <div className="border-b bg-background px-6 py-4">
+        <div className="border-b bg-background px-4 py-3 md:px-6 md:py-4">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold">{project?.name}</h1>
@@ -201,7 +201,7 @@ export function KanbanPage() {
           </div>
         </div>
 
-        <div className="flex flex-1 gap-4 overflow-x-auto p-6">
+        <div className="flex flex-col gap-4 md:grid md:grid-cols-2 lg:flex lg:flex-row lg:gap-4 lg:overflow-x-auto p-4 md:p-6">
           {columns.map((column) => {
             const columnTasks = tasks
               .filter((task) => task.columnId === column.id)

@@ -80,6 +80,7 @@ export function GitTab({ taskId, gitBranch }: GitTabProps) {
 
       for (const evt of gitPushEvents) {
         const c = evt.content
+        if (typeof c !== 'object' || c === null || !('commit' in c)) continue
         if (c.commit) {
           commitList.push({
             hash: c.commit,

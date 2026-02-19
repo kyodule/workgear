@@ -235,8 +235,9 @@ describe('DraggableResizableDialog', () => {
   // --- Viewport clamping ---
 
   it('clamps initial position to non-negative values on small viewports', () => {
-    // Simulate a narrow viewport (400px wide, 300px tall)
-    Object.defineProperty(window, 'innerWidth', { value: 400, writable: true })
+    // Simulate a narrow viewport that is still above mobile breakpoint (768px)
+    // so the Rnd container is rendered instead of fullscreen mode
+    Object.defineProperty(window, 'innerWidth', { value: 800, writable: true })
     Object.defineProperty(window, 'innerHeight', { value: 300, writable: true })
 
     render(
@@ -256,7 +257,7 @@ describe('DraggableResizableDialog', () => {
     expect(x).toBeGreaterThanOrEqual(0)
     expect(y).toBeGreaterThanOrEqual(0)
     // Size should be clamped to viewport
-    expect(w).toBeLessThanOrEqual(400)
+    expect(w).toBeLessThanOrEqual(800)
     expect(h).toBeLessThanOrEqual(300)
 
     // Restore

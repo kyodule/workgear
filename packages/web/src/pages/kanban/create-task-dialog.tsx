@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { useIsMobile } from '@/hooks/use-is-mobile'
 
 interface CreateTaskDialogProps {
   open: boolean
@@ -18,6 +19,7 @@ interface CreateTaskDialogProps {
 }
 
 export function CreateTaskDialog({ open, onOpenChange, projectId, columnId, onSuccess }: CreateTaskDialogProps) {
+  const isMobile = useIsMobile()
   const { addTask } = useKanbanStore()
   const [loading, setLoading] = useState(false)
   const { register, handleSubmit, reset, formState: { errors } } = useForm<CreateTaskDto>()
@@ -54,32 +56,44 @@ export function CreateTaskDialog({ open, onOpenChange, projectId, columnId, onSu
       minWidth={400}
       minHeight={280}
       footer={
-        <>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+        <div className={isMobile ? 'flex flex-col-reverse gap-2 w-full' : 'flex gap-2'}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className={isMobile ? 'h-11 text-base w-full' : ''}
+          >
             取消
           </Button>
-          <Button type="submit" form="create-task-form" disabled={loading}>
+          <Button
+            type="submit"
+            form="create-task-form"
+            disabled={loading}
+            className={isMobile ? 'h-11 text-base w-full' : ''}
+          >
             {loading ? '创建中...' : '创建'}
           </Button>
-        </>
+        </div>
       }
     >
       <form id="create-task-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="title">任务标题 *</Label>
+          <Label htmlFor="title" className={isMobile ? 'text-sm' : ''}>任务标题 *</Label>
           <Input
             id="title"
             placeholder="任务标题"
+            className={isMobile ? 'h-11 text-base' : ''}
             {...register('title', { required: '任务标题不能为空' })}
           />
           {errors.title && <p className="text-sm text-destructive">{errors.title.message}</p>}
         </div>
         <div className="space-y-2">
-          <Label htmlFor="description">描述</Label>
+          <Label htmlFor="description" className={isMobile ? 'text-sm' : ''}>描述</Label>
           <Textarea
             id="description"
             placeholder="任务描述（可选）"
             rows={4}
+            className={isMobile ? 'text-base' : ''}
             {...register('description')}
           />
         </div>

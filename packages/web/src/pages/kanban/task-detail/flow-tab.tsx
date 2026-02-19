@@ -177,9 +177,9 @@ export function FlowTab({ taskId, refreshKey, onFullscreen }: FlowTabProps) {
       )}
 
       {/* Node execution progress */}
-      <div className="space-y-2">
+      <div className="space-y-4 md:space-y-2">
         <h4 className="text-sm font-medium">节点执行进度</h4>
-        <div className="space-y-1">
+        <div className="space-y-3 md:space-y-1">
           {latestNodeRuns.map((node) => (
             <NodeRunItem
               key={node.id}
@@ -446,13 +446,13 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
     <div className="rounded-md border">
       {/* Node header */}
       <div
-        className={`flex items-center gap-3 px-3 py-2 ${isClickable ? 'cursor-pointer hover:bg-muted/50' : ''}`}
+        className={`flex items-center gap-3 p-4 md:px-3 md:py-2 min-h-[44px] ${isClickable ? 'cursor-pointer hover:bg-muted/50' : ''}`}
         onClick={() => isClickable && setExpanded(!expanded)}
       >
         {statusIcons[nodeRun.status] || <Clock className="h-4 w-4" />}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm truncate">{displayName}</span>
+            <span className="text-base md:text-sm truncate">{displayName}</span>
             {nodeRun.nodeType && (
               <span className="text-xs text-muted-foreground">({nodeRun.nodeType})</span>
             )}
@@ -461,28 +461,29 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
             )}
           </div>
         </div>
-        <Badge variant={statusColors[nodeRun.status] || 'outline'} className="text-xs shrink-0">
+        <Badge variant={statusColors[nodeRun.status] || 'outline'} className="text-sm md:text-xs shrink-0">
           {statusLabels[nodeRun.status] || nodeRun.status}
         </Badge>
         {nodeRun.nodeType === 'agent_task' && (
           <Button
             size="sm"
             variant="ghost"
-            className="h-6 w-6 p-0 shrink-0"
+            className="h-11 w-11 md:h-6 md:w-6 p-0 shrink-0"
             onClick={(e) => {
               e.stopPropagation()
               onViewLogs()
             }}
             title="查看日志"
+            aria-label="查看日志"
           >
-            <FileText className="h-3.5 w-3.5" />
+            <FileText className="h-5 w-5 md:h-3.5 md:w-3.5" />
           </Button>
         )}
       </div>
 
       {/* Expanded content */}
       {expanded && (
-        <div className="border-t px-3 py-3 space-y-3">
+        <div className="border-t p-4 md:px-3 md:py-3 space-y-3">
           {/* Show transient artifacts (e.g., requirement understanding) */}
           {nodeRun.transientArtifacts && Object.keys(nodeRun.transientArtifacts).length > 0 && (
             <div>
@@ -605,24 +606,24 @@ function NodeRunItem({ nodeRun, flowStatus, onActionComplete, onViewLogs, artifa
                 rows={4}
                 className="text-sm"
               />
-              <div className="flex gap-2">
-                <Button size="sm" onClick={() => handleReview('approve')} disabled={submitting}>
+              <div className="flex flex-col gap-2 md:flex-row md:gap-2">
+                <Button size="sm" className="h-11 md:h-auto" onClick={() => handleReview('approve')} disabled={submitting}>
                   <CheckCircle className="mr-1 h-3 w-3" />
                   通过
                 </Button>
-                <Button size="sm" variant="destructive" onClick={() => handleReview('reject', false)} disabled={submitting || !feedback.trim()}>
+                <Button size="sm" className="h-11 md:h-auto" variant="destructive" onClick={() => handleReview('reject', false)} disabled={submitting || !feedback.trim()}>
                   <RotateCcw className="mr-1 h-3 w-3" />
                   打回
                 </Button>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
+                <Button
+                  size="sm"
+                  className="h-11 md:h-auto border-orange-500 text-orange-600 hover:bg-orange-50"
+                  variant="outline"
                   onClick={() => {
                     if (!confirm('确定要强制打回吗？这将绕过打回次数限制。')) return
                     handleReview('reject', true)
-                  }} 
+                  }}
                   disabled={submitting || !feedback.trim()}
-                  className="border-orange-500 text-orange-600 hover:bg-orange-50"
                 >
                   <AlertCircle className="mr-1 h-3 w-3" />
                   强制打回
@@ -881,7 +882,7 @@ function extractReviewContent(input: Record<string, any> | null): string {
   // 3. 改进建议
   if (Array.isArray(parsed.suggestions) && parsed.suggestions.length > 0) {
     parts.push('\n改进建议：')
-    parsed.suggestions.forEach((s, i) => {
+    parsed.suggestions.forEach((s: unknown, i: number) => {
       parts.push(`${i + 1}. ${typeof s === 'string' ? s : JSON.stringify(s)}`)
     })
   }

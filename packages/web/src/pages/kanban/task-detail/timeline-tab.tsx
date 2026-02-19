@@ -71,7 +71,7 @@ function renderEventContent(event: TimelineEvent) {
   }
 
   if (typeof event.content === 'object' && event.content !== null) {
-    return <pre className="whitespace-pre-wrap">{JSON.stringify(event.content, null, 2)}</pre>
+    return <pre className="whitespace-pre-wrap overflow-x-auto text-sm md:text-xs font-mono break-words">{JSON.stringify(event.content, null, 2)}</pre>
   }
 
   return '无内容'
@@ -99,15 +99,15 @@ function TimelineEventItem({ event }: { event: TimelineEvent }) {
       <div className="flex-1 pb-4">
         {/* 可点击的事件头部 */}
         <div
-          className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 rounded px-2 py-1 -mx-2"
+          className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 active:bg-muted/50 rounded px-2 py-1 -mx-2 min-h-[44px]"
           onClick={() => setExpanded(!expanded)}
         >
-          <Badge variant={eventColor}>{eventLabel}</Badge>
-          <span className="text-xs text-muted-foreground">
+          <Badge variant={eventColor} className="text-sm md:text-xs">{eventLabel}</Badge>
+          <span className="text-sm md:text-xs text-muted-foreground">
             {new Date(event.createdAt).toLocaleString('zh-CN')}
           </span>
           {!expanded && (
-            <span className="text-sm text-muted-foreground truncate flex-1">
+            <span className="text-base md:text-sm text-muted-foreground truncate flex-1">
               {summary}
             </span>
           )}
@@ -115,7 +115,7 @@ function TimelineEventItem({ event }: { event: TimelineEvent }) {
 
         {/* 展开的完整内容 */}
         {expanded && (
-          <div className="border-t px-3 py-3 text-sm">
+          <div className="border-t px-3 py-3 text-base md:text-sm break-words">
             {renderEventContent(event)}
           </div>
         )}

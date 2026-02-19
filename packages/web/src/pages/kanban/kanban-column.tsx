@@ -19,13 +19,13 @@ export function KanbanColumnComponent({ column, tasks, onCreateTask, onTaskClick
   })
 
   return (
-    <div className="flex w-80 flex-shrink-0 flex-col rounded-lg border bg-muted/50">
+    <div className="flex w-full md:w-auto lg:w-80 flex-shrink-0 flex-col rounded-lg border bg-muted/50">
       <div className="flex items-center justify-between border-b bg-background p-3">
         <div className="flex items-center gap-2">
-          <h3 className="font-semibold">{column.name}</h3>
+          <h3 className="font-semibold text-base md:text-sm">{column.name}</h3>
           <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">{tasks.length}</span>
         </div>
-        <Button variant="ghost" size="icon" onClick={onCreateTask}>
+        <Button variant="ghost" size="icon" onClick={onCreateTask} className="h-11 w-11 md:h-10 md:w-10" aria-label={`在${column.name}中添加任务`}>
           <Plus className="h-4 w-4" />
         </Button>
       </div>

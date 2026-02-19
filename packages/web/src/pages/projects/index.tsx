@@ -4,6 +4,7 @@ import { Plus, MoreVertical, Pencil, Trash2, Globe, Lock } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Project } from '@/lib/types'
 import { useProjectStore } from '@/stores/project-store'
+import { useIsMobile } from '@/hooks/use-is-mobile'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -16,6 +17,7 @@ import { CreateProjectDialog } from './create-dialog'
 import { EditProjectDialog } from './edit-dialog'
 
 export function ProjectsPage() {
+  const isMobile = useIsMobile()
   const navigate = useNavigate()
   const { projects, setProjects, removeProject } = useProjectStore()
   const [loading, setLoading] = useState(true)
@@ -59,51 +61,53 @@ export function ProjectsPage() {
 
   return (
     <div className="h-full overflow-auto">
-      <div className="container mx-auto p-6">
+      <div className="container mx-auto p-4 md:p-6">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">项目</h1>
-            <p className="text-muted-foreground">管理你的 WorkGear 项目</p>
+            <h1 className="text-2xl md:text-3xl font-bold">项目</h1>
+            <p className="text-sm md:text-base text-muted-foreground">管理你的 WorkGear 项目</p>
           </div>
-          <Button onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            新建项目
-          </Button>
+          {!isMobile && (
+            <Button onClick={() => setCreateDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              新建项目
+            </Button>
+          )}
         </div>
 
         {projects.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <p className="mb-4 text-muted-foreground">还没有项目</p>
-              <Button onClick={() => setCreateDialogOpen(true)}>
+              <Button onClick={() => setCreateDialogOpen(true)} className={isMobile ? 'h-11 text-base' : ''}>
                 <Plus className="mr-2 h-4 w-4" />
                 创建第一个项目
               </Button>
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
             {projects.map((project) => (
               <Card
                 key={project.id}
-                className="cursor-pointer transition-shadow hover:shadow-md"
+                className="cursor-pointer transition-shadow hover:shadow-md active:shadow-md min-h-[120px]"
                 onClick={() => navigate(`/projects/${project.id}/kanban`)}
               >
-                <CardHeader>
+                <CardHeader className="p-4">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <CardTitle>{project.name}</CardTitle>
+                      <CardTitle className="text-lg">{project.name}</CardTitle>
                       <span className="ml-2 inline-flex items-center gap-1 text-xs text-muted-foreground">
                         {project.visibility === 'public' ? <Globe className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
                         {project.visibility === 'public' ? '公开' : '私有'}
                       </span>
                       {project.description && (
-                        <CardDescription className="mt-2">{project.description}</CardDescription>
+                        <CardDescription className="mt-2 text-sm">{project.description}</CardDescription>
                       )}
                     </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                        <Button variant="ghost" size="icon">
+                        <Button variant="ghost" size="icon" className={isMobile ? 'h-11 w-11' : ''}>
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -130,13 +134,24 @@ export function ProjectsPage() {
                   </div>
                 </CardHeader>
                 {project.gitRepoUrl && (
-                  <CardContent>
+                  <CardContent className="p-4 pt-0">
                     <p className="truncate text-sm text-muted-foreground">{project.gitRepoUrl}</p>
                   </CardContent>
                 )}
               </Card>
             ))}
           </div>
+        )}
+
+        {/* Mobile FAB */}
+        {isMobile && projects.length > 0 && (
+          <button
+            onClick={() => setCreateDialogOpen(true)}
+            className="fixed bottom-4 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform active:scale-95"
+            aria-label="新建项目"
+          >
+            <Plus className="h-6 w-6" />
+          </button>
         )}
 
         <CreateProjectDialog

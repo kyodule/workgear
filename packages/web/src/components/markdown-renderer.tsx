@@ -34,7 +34,7 @@ function PreWithCopy({ children, ...props }: React.HTMLAttributes<HTMLPreElement
 
   return (
     <div className="relative group">
-      <pre {...props}>{children}</pre>
+      <pre className="overflow-x-auto" {...props}>{children}</pre>
       <button
         onClick={handleCopy}
         className="absolute top-1.5 right-1.5 rounded p-1 text-muted-foreground
@@ -73,7 +73,10 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
-        components={{ pre: PreWithCopy }}
+        components={{
+          pre: PreWithCopy,
+          img: (props) => <img {...props} className="max-w-full h-auto" />,
+        }}
       >
         {content}
       </ReactMarkdown>
