@@ -45,15 +45,15 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-[90%] max-w-[400px] md:w-full md:max-w-md">
         <CardHeader className="text-center">
           <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
             <Workflow className="h-6 w-6 text-primary" />
           </div>
-          <CardTitle className="text-2xl md:text-2xl">登录 WorkGear</CardTitle>
+          <CardTitle className="text-xl md:text-2xl">登录 WorkGear</CardTitle>
           <CardDescription>输入你的账号信息</CardDescription>
         </CardHeader>
-        <CardContent className="p-6 md:p-6">
+        <CardContent className="p-6 md:p-8">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             {error && (
               <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
@@ -85,9 +85,9 @@ export function LoginPage() {
             <Button type="submit" className="w-full h-11 text-base md:h-10 md:text-sm" disabled={loading}>
               {loading ? '登录中...' : '登录'}
             </Button>
-            <p className="text-center text-sm text-muted-foreground">
+            <p className="text-center text-sm text-muted-foreground min-h-[44px] flex items-center justify-center">
               还没有账号？{' '}
-              <Link to="/register" className="text-primary hover:underline">
+              <Link to="/register" className="text-primary hover:underline ml-1">
                 注册
               </Link>
             </p>

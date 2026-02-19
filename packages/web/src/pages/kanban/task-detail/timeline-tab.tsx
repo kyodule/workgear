@@ -71,7 +71,7 @@ function renderEventContent(event: TimelineEvent) {
   }
 
   if (typeof event.content === 'object' && event.content !== null) {
-    return <pre className="whitespace-pre-wrap">{JSON.stringify(event.content, null, 2)}</pre>
+    return <pre className="whitespace-pre-wrap overflow-x-auto text-sm md:text-xs font-mono break-words">{JSON.stringify(event.content, null, 2)}</pre>
   }
 
   return '无内容'

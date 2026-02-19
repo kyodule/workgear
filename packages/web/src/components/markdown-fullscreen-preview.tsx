@@ -75,10 +75,9 @@ export function MarkdownFullscreenPreview({
     >
       {/* Toolbar */}
       <div className={cn(
-        "border-b border-border flex items-center justify-between px-4 shrink-0",
-        isMobile ? "h-14" : "h-14"
+        "border-b border-border flex items-center justify-between px-4 shrink-0 h-14"
       )}>
-        <h2 className={cn("font-semibold truncate", isMobile ? "text-lg" : "text-lg")}>{displayTitle}</h2>
+        <h2 className="text-lg font-semibold truncate">{displayTitle}</h2>
         <Button
           variant="ghost"
           size="icon"

@@ -139,7 +139,7 @@ function LogEntry({ event }: { event: LogStreamEvent }) {
             <span>助手</span>
             <span className="ml-auto">{time}</span>
           </div>
-          <div className="text-sm whitespace-pre-wrap">{event.content}</div>
+          <div className="text-base md:text-sm whitespace-pre-wrap">{event.content}</div>
         </div>
       )
 

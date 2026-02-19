@@ -58,20 +58,20 @@ export function CreateTaskDialog({ open, onOpenChange, projectId, columnId, onSu
       footer={
         <div className={isMobile ? 'flex flex-col gap-2 w-full' : 'flex gap-2'}>
           <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            className={isMobile ? 'h-11 text-base w-full' : ''}
-          >
-            取消
-          </Button>
-          <Button
             type="submit"
             form="create-task-form"
             disabled={loading}
             className={isMobile ? 'h-11 text-base w-full' : ''}
           >
             {loading ? '创建中...' : '创建'}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className={isMobile ? 'h-11 text-base w-full' : ''}
+          >
+            取消
           </Button>
         </div>
       }

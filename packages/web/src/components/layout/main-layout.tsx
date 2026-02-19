@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { Outlet } from 'react-router'
 import { Menu } from 'lucide-react'
 import { Sidebar } from './sidebar'
+import { UserMenu } from './user-menu'
 import { useIsMobile } from '@/hooks/use-is-mobile'
+import { cn } from '@/lib/utils'
 
 export function MainLayout() {
   const isMobile = useIsMobile()
@@ -34,11 +36,13 @@ export function MainLayout() {
               <Menu className="h-5 w-5" />
             </button>
             <span className="text-lg font-semibold">WorkGear</span>
-            <div className="w-11" />
+            <div className="w-11">
+              <UserMenu />
+            </div>
           </header>
         )}
 
-        <main className={`flex-1 overflow-auto ${isMobile ? 'pt-14' : ''}`}>
+        <main className={cn('flex-1 overflow-auto', isMobile && 'pt-14')}>
           <Outlet />
         </main>
       </div>

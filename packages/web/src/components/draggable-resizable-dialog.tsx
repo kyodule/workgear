@@ -163,7 +163,7 @@ export function DraggableResizableDialog({
         >
           {/* 标题栏 */}
           <div className="flex items-center justify-between border-b px-4 py-3 select-none">
-            <div id={titleId} className="text-base font-semibold">
+            <div id={titleId} className="text-xl font-semibold">
               {title}
             </div>
             <button

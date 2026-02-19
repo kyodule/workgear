@@ -164,9 +164,12 @@ export function TaskDetail({ task, open, onOpenChange, onDeleted }: TaskDetailPr
             </div>
 
             {/* Bottom navigation */}
-            <div className="fixed bottom-0 left-0 right-0 flex border-t bg-background">
+            <div className="fixed bottom-0 left-0 right-0 flex border-t bg-background" role="tablist" aria-label="任务详情标签页">
               <button
                 onClick={() => setActiveTab('timeline')}
+                role="tab"
+                aria-selected={activeTab === 'timeline'}
+                aria-label="时间线"
                 className={cn(
                   'flex-1 h-14 flex flex-col items-center justify-center gap-1 transition-colors',
                   activeTab === 'timeline' ? 'text-primary' : 'text-muted-foreground'
@@ -177,6 +180,9 @@ export function TaskDetail({ task, open, onOpenChange, onDeleted }: TaskDetailPr
               </button>
               <button
                 onClick={() => setActiveTab('flow')}
+                role="tab"
+                aria-selected={activeTab === 'flow'}
+                aria-label="流程"
                 className={cn(
                   'flex-1 h-14 flex flex-col items-center justify-center gap-1 transition-colors',
                   activeTab === 'flow' ? 'text-primary' : 'text-muted-foreground'
@@ -187,6 +193,9 @@ export function TaskDetail({ task, open, onOpenChange, onDeleted }: TaskDetailPr
               </button>
               <button
                 onClick={() => setActiveTab('artifacts')}
+                role="tab"
+                aria-selected={activeTab === 'artifacts'}
+                aria-label="产物"
                 className={cn(
                   'flex-1 h-14 flex flex-col items-center justify-center gap-1 transition-colors',
                   activeTab === 'artifacts' ? 'text-primary' : 'text-muted-foreground'
@@ -197,6 +206,9 @@ export function TaskDetail({ task, open, onOpenChange, onDeleted }: TaskDetailPr
               </button>
               <button
                 onClick={() => setActiveTab('git')}
+                role="tab"
+                aria-selected={activeTab === 'git'}
+                aria-label="Git"
                 className={cn(
                   'flex-1 h-14 flex flex-col items-center justify-center gap-1 transition-colors',
                   activeTab === 'git' ? 'text-primary' : 'text-muted-foreground'

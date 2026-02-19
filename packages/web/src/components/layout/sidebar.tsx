@@ -26,7 +26,7 @@ export function Sidebar({ open, onClose, mobile }: SidebarProps) {
   const sidebarContent = (
     <aside className={cn(
       'flex h-full flex-col border-r bg-card',
-      mobile ? 'w-4/5 max-w-[300px]' : 'w-56'
+      mobile ? 'w-4/5 max-w-[300px]' : 'w-64'
     )}>
       <div className="flex h-14 items-center justify-between border-b px-4">
         <Link to="/" className="flex items-center gap-2 font-semibold" onClick={handleNavClick}>
@@ -59,7 +59,7 @@ export function Sidebar({ open, onClose, mobile }: SidebarProps) {
                   : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
               )}
             >
-              <item.icon className="h-4 w-4" />
+              <item.icon className="h-5 w-5" />
               {item.label}
             </Link>
           )
