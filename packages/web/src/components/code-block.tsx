@@ -36,7 +36,7 @@ export function CodeBlock({ code, language, maxHeight = '12rem', className }: Co
 
   return (
     <div className={cn('relative group', className)}>
-      <pre className={cn('rounded bg-muted p-2 text-sm md:text-xs overflow-auto', maxHeight && `max-h-[${maxHeight}]`)}>
+      <pre className={cn('rounded bg-muted p-2 text-sm md:text-xs overflow-auto')} style={maxHeight ? { maxHeight } : undefined}>
         <code ref={codeRef} className={language ? `language-${language}` : ''}>
           {code}
         </code>

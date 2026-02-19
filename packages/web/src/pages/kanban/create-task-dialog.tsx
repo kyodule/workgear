@@ -56,15 +56,7 @@ export function CreateTaskDialog({ open, onOpenChange, projectId, columnId, onSu
       minWidth={400}
       minHeight={280}
       footer={
-        <div className={isMobile ? 'flex flex-col gap-2 w-full' : 'flex gap-2'}>
-          <Button
-            type="submit"
-            form="create-task-form"
-            disabled={loading}
-            className={isMobile ? 'h-11 text-base w-full' : ''}
-          >
-            {loading ? '创建中...' : '创建'}
-          </Button>
+        <div className={isMobile ? 'flex flex-col-reverse gap-2 w-full' : 'flex gap-2'}>
           <Button
             type="button"
             variant="outline"
@@ -72,6 +64,14 @@ export function CreateTaskDialog({ open, onOpenChange, projectId, columnId, onSu
             className={isMobile ? 'h-11 text-base w-full' : ''}
           >
             取消
+          </Button>
+          <Button
+            type="submit"
+            form="create-task-form"
+            disabled={loading}
+            className={isMobile ? 'h-11 text-base w-full' : ''}
+          >
+            {loading ? '创建中...' : '创建'}
           </Button>
         </div>
       }
