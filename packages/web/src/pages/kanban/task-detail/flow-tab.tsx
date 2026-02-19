@@ -882,7 +882,7 @@ function extractReviewContent(input: Record<string, any> | null): string {
   // 3. 改进建议
   if (Array.isArray(parsed.suggestions) && parsed.suggestions.length > 0) {
     parts.push('\n改进建议：')
-    parsed.suggestions.forEach((s, i) => {
+    parsed.suggestions.forEach((s: unknown, i: number) => {
       parts.push(`${i + 1}. ${typeof s === 'string' ? s : JSON.stringify(s)}`)
     })
   }

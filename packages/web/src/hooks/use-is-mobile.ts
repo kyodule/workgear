@@ -9,7 +9,7 @@ export function useIsMobile(breakpoint: number = 768): boolean {
   const [isMobile, setIsMobile] = useState(
     () => typeof window !== 'undefined' && window.innerWidth < breakpoint
   )
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   const checkMobile = useCallback(() => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
@@ -44,7 +44,7 @@ export function useDeviceType(): 'mobile' | 'tablet' | 'desktop' {
     if (width < 1024) return 'tablet'
     return 'desktop'
   })
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   const checkDeviceType = useCallback(() => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
