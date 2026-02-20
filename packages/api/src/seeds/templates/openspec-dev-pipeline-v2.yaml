@@ -120,13 +120,18 @@ nodes:
         ## 需求理解（已确认）
         {{nodes.confirm_understanding.outputs.confirmed_understanding}}
 
-        ## Change Name
-        {{nodes.generate_change_name.outputs.change_name}}
+        ## Change Name（变更标识符）
+        本次变更的唯一标识符为：{{nodes.generate_change_name.outputs.change_name}}
 
         你需要：
-        1. 创建 OpenSpec change: {{nodes.generate_change_name.outputs.change_name}}
+        1. 创建 OpenSpec change 目录：openspec/changes/{{nodes.generate_change_name.outputs.change_name}}/
         2. 生成 proposal.md（为什么做、做什么、影响范围）
         3. 生成 delta specs：
+           - 每个 spec 文件开头必须包含元数据块，格式如下：
+             > **Type:** ADDED/MODIFIED/REMOVED
+             > **Module:** <模块名>
+             > **Date:** YYYY-MM-DD
+             > **Change:** {{nodes.generate_change_name.outputs.change_name}}
            - 目录结构镜像 openspec/specs/ 的模块分类
            - 文件名格式：<PREFIX>-YYYY-MM-DD-<capability>.md
            - PREFIX 为 ADDED（新增功能）/ MODIFIED（修改现有功能）/ REMOVED（删除功能）
@@ -137,6 +142,8 @@ nodes:
         ⚠️ 重要：
         - 请直接生成 OpenSpec 产物，不要重新分析需求
         - 需求理解已经过人工确认，请严格按照理解的内容生成 Spec
+        - 在所有 spec 文件的 `> **Change:**` 字段中，必须使用变更标识符的原始值：{{nodes.generate_change_name.outputs.change_name}}
+        - 不要修改或添加任何前缀，直接使用这个值
 
         请确保所有文件保存到 openspec/changes/{{nodes.generate_change_name.outputs.change_name}}/ 目录下。
       retry:
