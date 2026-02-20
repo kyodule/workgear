@@ -10,6 +10,7 @@ import { WorkflowEditorPage } from './pages/workflows/workflow-editor'
 import { ExplorePage } from './pages/explore'
 import { AgentConfigPage } from './pages/settings/agents'
 import { AgentRolesPage } from './pages/settings/agent-roles'
+import { SkillsPage } from './pages/settings/skills'
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
           <Route path="projects/:projectId/workflows/:workflowId/edit" element={<WorkflowEditorPage />} />
           <Route path="settings/agents" element={<AgentConfigPage />} />
           <Route path="settings/agent-roles" element={<AgentRolesPage />} />
+          <Route path="settings/skills" element={<SkillsPage />} />
           <Route path="explore" element={<ExplorePage />} />
         </Route>
       </Routes>

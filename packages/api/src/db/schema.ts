@@ -316,3 +316,16 @@ export const agentRoles = pgTable('agent_roles', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
+
+// ============================================================
+// Skills 表
+// ============================================================
+export const skills = pgTable('skills', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 200 }).notNull(),
+  description: text('description'),
+  prompt: text('prompt').notNull(),
+  sourceUrl: varchar('source_url', { length: 1000 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})

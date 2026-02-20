@@ -18,6 +18,7 @@ import { agentRoleRoutes } from './routes/agent-roles.js'
 import { agentTypeRoutes } from './routes/agent-types.js'
 import { agentProviderRoutes, agentModelRoutes } from './routes/agent-providers.js'
 import { authRoutes } from './routes/auth.js'
+import skillsRoutes from './routes/skills.js'
 import { wsGateway, startEventForwarding, stopEventForwarding } from './ws/gateway.js'
 
 const PORT = parseInt(process.env.PORT || '4000', 10)
@@ -56,6 +57,7 @@ await app.register(agentTypeRoutes, { prefix: '/api/agent-types' })
 await app.register(agentProviderRoutes, { prefix: '/api/agent-providers' })
 await app.register(agentModelRoutes, { prefix: '/api/agent-models' })
 await app.register(agentRoleRoutes, { prefix: '/api/agent-roles' })
+await app.register(skillsRoutes)
 
 // WebSocket
 await app.register(wsGateway)
