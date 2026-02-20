@@ -1,4 +1,4 @@
-# Delta Spec: API 支持 Skill GitHub 导入
+# Delta Spec: API 支持从 URL 导入 Skill
 
 > **Type:** MODIFIED
 > **Module:** api
@@ -7,91 +7,96 @@
 
 ## 概述
 
-修改 API 模块，在 skills 表新增 source 相关列，新增 GitHub 导入接口，支持从 GitHub 仓库批量导入 Skill 定义。
+修改 API 模块，在 skills 表新增 source_url 列，新增从 URL 导入 Skill 的接口，支持用户粘贴文件 URL 一次性导入 Skill 定义。
 
 ---
 
 ## 场景
 
-### Scenario 1: skills 表新增 source 相关列
+### Scenario 1: skills 表新增 source_url 列
 
 ```gherkin
 Given 数据库 skills 表已存在
-When 执行 migration 添加 source 相关列
-Then skills 表新增 source_repo_url varchar(500) 可空列
-  And skills 表新增 source_commit_sha varchar(100) 可空列
-  And skills 表新增 source_file_path varchar(500) 可空列
-  And 现有数据的 source 字段值为 NULL
+When 执行 migration 添加 source_url 列
+Then skills 表新增 source_url varchar(1000) 可空列
+  And 现有数据的 source_url 字段值为 NULL
   And 不影响现有查询和写入操作
 ```
 
-### Scenario 2: POST /api/skills/import-from-github 接口
+### Scenario 2: POST /api/skills/import-from-url 导入 Skill
 
 ```gherkin
-Given 用户提供 GitHub 仓库 URL 和访问 token
-When 客户端请求 POST /api/skills/import-from-github
-  And 请求体包含 { repoUrl, accessToken, filePaths: ["prompts/code-review.md"] }
-Then 系统调用 GitHub API 获取文件内容
+Given 用户提供一个公开可访问的文件 URL
+When 客户端请求 POST /api/skills/import-from-url
+  And 请求体包含 { url: "https://raw.githubusercontent.com/owner/repo/main/prompts/code-review.md" }
+Then 系统后端 fetch 该 URL 获取文件内容
   And 系统解析文件提取 Skill 元数据（name, description, prompt）
-  And 系统批量创建 Skill 记录，填充 source 字段
-  And 响应体返回 { imported: 3, skipped: 1, errors: [] }
+  And 系统返回解析结果供用户预览
+  And 响应体返回 { name, description, prompt, sourceUrl }
 ```
 
-### Scenario 3: GET /api/skills/github-files 获取仓库文件列表
+### Scenario 3: POST /api/skills/import-from-url 确认创建
 
 ```gherkin
-Given 用户提供 GitHub 仓库 URL 和访问 token
-When 客户端请求 GET /api/skills/github-files?repoUrl={url}&accessToken={token}
-Then 系统调用 GitHub API 获取仓库文件树
-  And 系统筛选出 .md、.txt、.yaml 文件
-  And 响应体返回 { files: [{ path, name, size, sha }] }
+Given 用户已预览导入内容并确认
+When 客户端请求 POST /api/skills
+  And 请求体包含 { name, description, prompt, sourceUrl }
+Then 系统创建 Skill 记录，填充 sourceUrl 字段
+  And 响应体返回创建的 Skill 对象
 ```
 
-### Scenario 4: 同名 Skill 冲突处理
-
-```gherkin
-Given 系统中已存在名为 "code-review" 的 Skill
-When 用户导入包含同名 Skill 的文件
-  And 请求参数 conflictStrategy = "skip"
-Then 系统跳过该 Skill，不创建新记录
-  And 响应中 skipped 计数 +1
-  And 响应中 errors 数组包含 { file: "code-review.md", reason: "Skill already exists" }
-```
-
-### Scenario 5: 同名 Skill 覆盖处理
+### Scenario 4: 同名 Skill 冲突处理 — 跳过
 
 ```gherkin
 Given 系统中已存在名为 "code-review" 的 Skill
-When 用户导入包含同名 Skill 的文件
-  And 请求参数 conflictStrategy = "overwrite"
-Then 系统更新现有 Skill 的 prompt 和 source 字段
-  And 响应中 imported 计数 +1
+When 用户导入解析出同名 Skill
+  And 用户选择 conflictStrategy = "skip"
+Then 系统不创建新记录
+  And 前端提示「Skill 已存在，已跳过」
+```
+
+### Scenario 5: 同名 Skill 冲突处理 — 覆盖
+
+```gherkin
+Given 系统中已存在名为 "code-review" 的 Skill
+When 用户导入解析出同名 Skill
+  And 用户选择 conflictStrategy = "overwrite"
+Then 系统更新现有 Skill 的 prompt、description 和 sourceUrl 字段
   And 保留原 Skill 的 id 和 createdAt
 ```
 
-### Scenario 6: GitHub API rate limit 处理
+### Scenario 6: URL 不可访问
 
 ```gherkin
-Given GitHub API 返回 403 Forbidden (rate limit exceeded)
-When 系统调用 GitHub API 获取文件内容
-Then 系统返回 429 Too Many Requests
-  And 响应体包含 { error: "GitHub API rate limit exceeded", retryAfter: 3600 }
+Given 用户提供的 URL 返回 404 或连接超时
+When 系统后端 fetch 该 URL
+Then 系统返回 400 Bad Request
+  And 响应体包含 { error: "无法访问该 URL，请检查地址是否正确" }
 ```
 
-### Scenario 7: Private 仓库访问权限验证
+### Scenario 7: URL 返回非文本内容
 
 ```gherkin
-Given 用户提供的 accessToken 无权限访问 private 仓库
-When 系统调用 GitHub API 获取文件内容
-Then GitHub API 返回 404 Not Found
-  And 系统返回 403 Forbidden
-  And 响应体包含 { error: "Repository not found or access denied" }
+Given 用户提供的 URL 返回 HTML 页面或二进制文件
+When 系统后端 fetch 该 URL
+  And Content-Type 不是 text/plain、text/markdown、text/yaml 或 application/octet-stream
+Then 系统尝试检测内容是否为有效文本
+  And 如果内容包含大量 HTML 标签，返回错误提示「请使用文件的 raw URL」
 ```
 
-### Scenario 8: Markdown 文件元数据提取
+### Scenario 8: 文件大小限制
 
 ```gherkin
-Given 文件内容为 Markdown 格式
+Given URL 返回的文件内容超过 1MB
+When 系统后端 fetch 该 URL
+Then 系统返回 400 Bad Request
+  And 响应体包含 { error: "文件大小超过 1MB 限制" }
+```
+
+### Scenario 9: Markdown 文件元数据提取
+
+```gherkin
+Given URL 返回的内容为 Markdown 格式
   And 文件首行为 "# Code Review Prompt"
   And 文件第二行为 "<!-- Description: Review code for best practices -->"
 When 系统解析文件提取元数据
@@ -100,10 +105,10 @@ Then Skill name = "Code Review Prompt"
   And Skill prompt = 文件主体内容（去除首行标题和注释）
 ```
 
-### Scenario 9: YAML frontmatter 元数据提取
+### Scenario 10: YAML frontmatter 元数据提取
 
 ```gherkin
-Given 文件内容包含 YAML frontmatter
+Given URL 返回的内容包含 YAML frontmatter
   And frontmatter 包含 name: "Code Review", description: "Review code"
 When 系统解析文件提取元数据
 Then Skill name = "Code Review"
@@ -111,54 +116,47 @@ Then Skill name = "Code Review"
   And Skill prompt = frontmatter 之后的内容
 ```
 
-### Scenario 10: 文件大小限制
+### Scenario 11: 从 URL 路径提取文件名作为降级
 
 ```gherkin
-Given 文件大小超过 1MB
-When 系统尝试导入该文件
-Then 系统返回错误
-  And 响应中 errors 数组包含 { file: "large-prompt.md", reason: "File size exceeds 1MB limit" }
-  And 该文件不被导入
+Given URL 返回的内容为纯文本，无 frontmatter 和 Markdown 标题
+When 系统解析文件提取元数据
+Then Skill name 从 URL 路径的文件名提取（如 "code-review" 从 "code-review.md"）
+  And Skill description 为 null
+  And Skill prompt = 文件完整内容
 ```
 
 ---
 
 ## API Schema
 
-### POST /api/skills/import-from-github 请求体
+### POST /api/skills/import-from-url 请求体
 
 ```typescript
-interface ImportFromGitHubRequest {
-  repoUrl: string                    // GitHub 仓库 URL（如 https://github.com/owner/repo）
-  accessToken?: string               // GitHub Personal Access Token（访问 private 仓库时必需）
-  filePaths: string[]                // 要导入的文件路径列表（相对仓库根目录）
-  conflictStrategy: 'skip' | 'overwrite'  // 同名 Skill 冲突处理策略
-  ref?: string                       // Git ref（branch/tag/commit），默认为 main
+interface ImportFromUrlRequest {
+  url: string                        // 文件 URL（GitHub raw URL 或任意公开 URL）
 }
 ```
 
-### POST /api/skills/import-from-github 响应体
+### POST /api/skills/import-from-url 响应体
 
 ```typescript
-interface ImportFromGitHubResponse {
-  imported: number                   // 成功导入的 Skill 数量
-  skipped: number                    // 跳过的 Skill 数量（冲突或已存在）
-  errors: Array<{                    // 导入失败的文件
-    file: string                     // 文件路径
-    reason: string                   // 失败原因
-  }>
+interface ImportFromUrlResponse {
+  name: string                       // 解析出的 Skill 名称
+  description: string | null         // 解析出的 Skill 描述
+  prompt: string                     // 解析出的 Prompt 内容
+  sourceUrl: string                  // 来源 URL
 }
 ```
 
-### GET /api/skills/github-files 响应体
+### POST /api/skills 请求体（扩展）
 
 ```typescript
-interface GitHubFilesResponse {
-  files: Array<{
-    path: string                     // 文件路径（相对仓库根目录）
-    name: string                     // 文件名
-    size: number                     // 文件大小（字节）
-    sha: string                      // Git blob SHA
-  }>
+interface CreateSkillRequest {
+  name: string
+  description: string | null
+  prompt: string
+  sourceUrl?: string                 // 可选，导入来源 URL
+  conflictStrategy?: 'skip' | 'overwrite'  // 可选，同名冲突处理策略
 }
 ```

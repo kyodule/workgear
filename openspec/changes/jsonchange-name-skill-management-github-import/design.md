@@ -1,220 +1,109 @@
-# Design: Skill Management GitHub Import — 从 GitHub 仓库导入 Skill 定义
+# Design: Skill Management URL Import — 从 URL 导入 Skill 定义
 
 ## 技术方案
 
 ### 方案概述
 
-在 Settings → Skills 页面新增「从 GitHub 导入」功能，用户输入 GitHub 仓库 URL 后，系统调用 GitHub API 获取仓库文件树，用户选择要导入的 Prompt 文件，系统解析文件内容提取 Skill 元数据，批量创建 Skill 记录并保存导入来源信息。
+在 Settings → Skills 页面新增「从 URL 导入」功能，用户粘贴文件 URL（如 GitHub raw URL），系统后端 fetch 获取文件内容，解析提取 Skill 元数据，用户预览确认后创建 Skill 记录。整个流程简洁直接，无需 OAuth 授权或仓库浏览。
 
 ### 设计决策
 
 | 决策点 | 选择 | 理由 |
 |--------|------|------|
-| GitHub API 调用位置 | 后端 API Server | 避免暴露 GitHub token 到前端，统一处理 rate limit 和错误 |
-| Access token 存储 | users 表 github_access_token 列（加密） | 与用户账号绑定，支持 private 仓库访问 |
-| 文件解析逻辑 | 后端独立模块 github-skill-importer.ts | 解耦业务逻辑，便于单元测试和扩展新格式 |
-| 元数据提取策略 | 优先 YAML frontmatter，其次 Markdown 标题 | YAML frontmatter 是标准格式，Markdown 标题作为降级方案 |
-| 同名冲突处理 | 用户选择 skip 或 overwrite | 避免误覆盖，给用户控制权 |
-| 导入来源记录 | skills 表新增 source_* 列 | 便于追溯来源，支持未来的重新导入功能 |
-| Public 仓库访问 | 无需授权，使用未认证请求 | 降低使用门槛，rate limit 60 次/小时通常足够 |
-| Private 仓库访问 | GitHub OAuth 授权，scope=repo | 标准 OAuth 流程，安全可靠 |
+| URL fetch 位置 | 后端 API Server | 规避前端 CORS 限制，统一处理错误和超时 |
+| 导入流程 | 两步：解析预览 → 确认创建 | 让用户确认解析结果再创建，避免误导入 |
+| 来源记录 | skills 表新增 source_url 列 | 单字段即可追溯来源，简洁够用 |
+| 元数据提取策略 | 优先 YAML frontmatter，其次 Markdown 标题，最后文件名 | 渐进降级，兼容多种文件格式 |
+| 同名冲突处理 | 前端检测 + 用户选择 skip/overwrite | 避免误覆盖，给用户控制权 |
+| 认证支持 | 不支持，仅公开 URL | 大幅降低复杂度，满足核心需求 |
 
 ### 备选方案（已排除）
 
-- **前端直接调用 GitHub API**：排除原因 — 需要暴露 token 到前端，安全风险高；无法统一处理 rate limit。
-- **使用 GitHub App 而非 OAuth**：排除原因 — GitHub App 需要用户安装到仓库，流程复杂；OAuth 更轻量。
-- **支持 Git clone 整个仓库**：排除原因 — 需要后端存储仓库文件，增加存储成本；用户通常只需要导入部分文件。
-- **实现双向同步**：排除原因 — 复杂度高，需要处理冲突合并；用户需求不明确。
+- **GitHub OAuth + 仓库浏览**：排除原因 — 复杂度高，需要 OAuth 流程、token 加密存储、GitHub API 集成；用户直接粘贴 raw URL 更简单直接。
+- **Git clone 仓库**：排除原因 — 需要后端存储仓库文件，增加存储和计算成本；用户通常只需导入单个文件。
+- **前端直接 fetch URL**：排除原因 — 受 CORS 限制，大部分跨域 URL 无法直接访问。
+- **批量导入多个 URL**：排除原因 — 增加 UI 复杂度，单个导入已满足需求，后续可扩展。
 
 ---
 
 ## 数据流
 
-### GitHub OAuth 授权流程
+### Skill 从 URL 导入流程
 
 ```
-用户点击「授权 GitHub」
-    │
-    ▼
-GET /auth/github/authorize
-    │
-    ├── 重定向到 GitHub OAuth 页面
-    │   URL: https://github.com/login/oauth/authorize
-    │   参数: client_id, redirect_uri, scope=repo
-    │
-    ▼
-用户同意授权
-    │
-    ▼
-GitHub 重定向到 /auth/github/callback?code={code}
-    │
-    ├── POST https://github.com/login/oauth/access_token
-    │   Body: { client_id, client_secret, code }
-    │   │
-    │   ▼
-    │   Response: { access_token, scope, token_type }
-    │
-    ├── 验证 token：GET https://api.github.com/user
-    │   Header: Authorization: Bearer {access_token}
-    │
-    ├── UPDATE users SET github_access_token = encrypt(access_token)
-    │   WHERE id = currentUserId
-    │
-    ▼
-重定向到 /settings/skills?github_authorized=true
-```
-
-### GitHub 文件列表获取流程
-
-```
-用户输入仓库 URL（如 https://github.com/owner/repo）
-    │
-    ▼
-POST /api/skills/github-files
-    Body: { repoUrl, ref: "main" }
-    │
-    ├── 解析 repoUrl → owner, repo
-    │
-    ├── 查询 users.github_access_token
-    │   │
-    │   ├── token 存在 → 使用认证请求（5000 次/小时）
-    │   └── token 不存在 → 使用未认证请求（60 次/小时）
-    │
-    ├── GET https://api.github.com/repos/{owner}/{repo}/git/trees/{ref}?recursive=1
-    │   Header: Authorization: Bearer {access_token}（如果有）
-    │   │
-    │   ▼
-    │   Response: { tree: [{ path, type, size, sha }] }
-    │
-    ├── 筛选文件：type === "blob" && (path.endsWith(".md") || path.endsWith(".txt") || path.endsWith(".yaml"))
-    │
-    ├── 过滤大文件：size <= 1MB
-    │
-    ▼
-返回 { files: [{ path, name, size, sha }] }
-```
-
-### Skill 导入流程
-
-```
-用户勾选文件 → 点击「导入」
-    │
-    ▼
-POST /api/skills/import-from-github
-    Body: {
-      repoUrl: "https://github.com/owner/repo",
-      filePaths: ["prompts/code-review.md", "prompts/test-gen.yaml"],
-      conflictStrategy: "skip",
-      ref: "main"
-    }
-    │
-    ├── 查询 users.github_access_token
-    │
-    ├── 并行获取文件内容（Promise.all）
-    │   │
-    │   ├── GET https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={ref}
-    │   │   Header: Authorization: Bearer {access_token}
-    │   │   │
-    │   │   ▼
-    │   │   Response: { content: base64_encoded_content, sha }
-    │   │
-    │   ├── Base64 解码 → 文件原始内容
-    │   │
-    │   ▼
-    │   解析文件提取元数据（调用 parseSkillFile）
-    │       │
-    │       ├── 检测 YAML frontmatter（--- 开头）
-    │       │   │
-    │       │   ├── 有 frontmatter → 解析 name, description
-    │       │   │   prompt = frontmatter 之后的内容
-    │       │   │
-    │       │   └── 无 frontmatter → 从 Markdown 标题提取
-    │       │       name = 首行 # 标题
-    │       │       description = 首行 <!-- Description: ... --> 注释
-    │       │       prompt = 去除标题和注释后的内容
-    │       │
-    │       ▼
-    │       返回 { name, description, prompt, sourceFilePath }
-    │
-    ├── 检查同名 Skill（SELECT * FROM skills WHERE name = ?)
-    │   │
-    │   ├── 存在 + conflictStrategy = "skip" → 跳过，记录到 skipped
-    │   │
-    │   ├── 存在 + conflictStrategy = "overwrite" → 更新
-    │   │   UPDATE skills SET
-    │   │     prompt = ?,
-    │   │     description = ?,
-    │   │     source_repo_url = ?,
-    │   │     source_commit_sha = ?,
-    │   │     source_file_path = ?,
-    │   │     updated_at = NOW()
-    │   │   WHERE name = ?
-    │   │
-    │   └── 不存在 → 创建
-    │       INSERT INTO skills (
-    │         id, name, description, prompt,
-    │         source_repo_url, source_commit_sha, source_file_path,
-    │         created_at, updated_at
-    │       ) VALUES (...)
-    │
-    ▼
-返回 { imported: 2, skipped: 0, errors: [] }
-```
-
-### 前端导入对话框交互流程
-
-```
-用户点击「从 GitHub 导入」按钮
+用户点击「从 URL 导入」按钮
     │
     ▼
 打开 SkillImportDialog
     │
-    ├── 步骤 1：输入仓库 URL
-    │   │
-    │   ├── 用户输入 https://github.com/owner/repo
-    │   ├── 用户选择 branch/tag（默认 main）
-    │   │
-    │   ▼
-    │   点击「下一步」
+    ├── 用户粘贴文件 URL
+    │   例：https://raw.githubusercontent.com/owner/repo/main/prompts/code-review.md
     │
-    ├── 步骤 2：选择文件
+    ▼
+点击「解析」
+    │
+    ▼
+POST /api/skills/import-from-url
+    Body: { url: "https://raw.githubusercontent.com/..." }
+    │
+    ├── 校验 URL 格式
+    │
+    ├── 后端 fetch(url)，设置超时 10s
     │   │
-    │   ├── 调用 POST /api/skills/github-files
+    │   ├── 成功 → 获取文件内容
+    │   │
+    │   ├── 404/超时 → 返回 400 { error: "无法访问该 URL" }
+    │   │
+    │   └── Content-Type 检测
+    │       │
+    │       ├── text/* 或 application/octet-stream → 继续解析
+    │       │
+    │       └── 内容含大量 HTML 标签 → 返回 400 { error: "请使用 raw URL" }
+    │
+    ├── 文件大小检查（>1MB → 返回 400）
+    │
+    ├── 解析文件提取元数据（调用 parseSkillFile）
+    │   │
+    │   ├── 检测 YAML frontmatter（--- 开头）
     │   │   │
-    │   │   ├── 成功 → 显示文件列表（带复选框）
+    │   │   ├── 有 frontmatter → 解析 name, description
+    │   │   │   prompt = frontmatter 之后的内容
     │   │   │
-    │   │   └── 失败（404/403）→ 提示「仓库不存在或需要授权」
-    │   │       显示「授权 GitHub」按钮
-    │   │
-    │   ├── 用户勾选文件
-    │   │
-    │   ▼
-    │   点击「下一步」
-    │
-    ├── 步骤 3：预览和配置
-    │   │
-    │   ├── 显示每个文件的预览（name, description, prompt 前 200 字符）
-    │   ├── 用户选择冲突策略（skip / overwrite）
+    │   │   └── 无 frontmatter → 检测 Markdown 标题
+    │   │       │
+    │   │       ├── 有 # 标题 → name = 标题文本
+    │   │       │
+    │   │       └── 无标题 → name = URL 路径中的文件名
     │   │
     │   ▼
-    │   点击「导入」
+    │   返回 { name, description, prompt, sourceUrl }
     │
-    ├── 步骤 4：导入中
-    │   │
-    │   ├── 调用 POST /api/skills/import-from-github
-    │   ├── 显示进度条（已导入 / 总数）
-    │   │
-    │   ▼
-    │   导入完成
+    ▼
+前端显示预览（name, description, prompt 前 200 字符）
     │
-    └── 步骤 5：结果展示
-        │
-        ├── 显示「成功导入 3 个 Skill」
-        ├── 显示「跳过 1 个 Skill（已存在）」
-        ├── 显示错误列表（如果有）
-        │
-        ▼
-        点击「完成」→ 关闭对话框 → 刷新 Skills 列表
+    ├── 用户可编辑 name 和 description
+    │
+    ├── 前端检查同名 Skill 是否存在
+    │   │
+    │   ├── 存在 → 显示冲突提示，用户选择 skip 或 overwrite
+    │   │
+    │   └── 不存在 → 直接创建
+    │
+    ▼
+用户点击「确认导入」
+    │
+    ▼
+POST /api/skills
+    Body: { name, description, prompt, sourceUrl, conflictStrategy? }
+    │
+    ├── conflictStrategy = "skip" → 返回 { skipped: true }
+    │
+    ├── conflictStrategy = "overwrite" → UPDATE skills SET ...
+    │
+    └── 无冲突 → INSERT INTO skills (...)
+    │
+    ▼
+导入成功 → 关闭对话框 → 刷新 Skills 列表
 ```
 
 ---
@@ -225,24 +114,18 @@ POST /api/skills/import-from-github
 
 | 文件路径 | 变更类型 | 说明 |
 |----------|----------|------|
-| `packages/api/src/db/schema.ts` | MODIFY | skills 表新增 source_repo_url, source_commit_sha, source_file_path 列；users 表新增 github_access_token 列 |
-| `packages/api/src/routes/skills.ts` | MODIFY | 新增 POST /skills/import-from-github 和 POST /skills/github-files 接口 |
-| `packages/api/src/routes/auth.ts` | MODIFY | 新增 GET /auth/github/authorize, GET /auth/github/callback, DELETE /auth/github/revoke, GET /auth/github/status 接口 |
-| `packages/web/src/pages/settings/skills.tsx` | MODIFY | 新增「从 GitHub 导入」按钮，集成 SkillImportDialog |
-| `packages/web/src/lib/types.ts` | MODIFY | Skill 接口新增 source 字段 |
+| `packages/api/src/db/schema.ts` | MODIFY | skills 表新增 source_url 列 |
+| `packages/api/src/routes/skills.ts` | MODIFY | 新增 POST /api/skills/import-from-url 接口；扩展 POST /api/skills 支持 sourceUrl 和 conflictStrategy |
+| `packages/web/src/pages/settings/skills.tsx` | MODIFY | 新增「从 URL 导入」按钮，集成 SkillImportDialog |
+| `packages/web/src/lib/types.ts` | MODIFY | Skill 接口新增 sourceUrl 字段 |
 
 ### 新增文件
 
 | 文件路径 | 说明 |
 |----------|------|
-| `packages/api/src/lib/github-skill-importer.ts` | GitHub Skill 导入核心逻辑（文件解析、元数据提取） |
-| `packages/api/src/lib/github-client.ts` | GitHub API 客户端封装（rate limit 处理、错误重试） |
-| `packages/api/src/lib/crypto.ts` | Token 加密/解密工具函数 |
-| `packages/web/src/components/skill-import-dialog.tsx` | GitHub 导入对话框组件（多步骤表单） |
-| `packages/web/src/components/skill-import-file-list.tsx` | 文件选择列表组件 |
-| `packages/web/src/components/skill-import-preview.tsx` | Skill 预览组件 |
-| `packages/api/drizzle/migrations/XXXX_add_skill_source_fields.sql` | Migration: 添加 skills 表 source 字段 |
-| `packages/api/drizzle/migrations/XXXX_add_github_access_token.sql` | Migration: 添加 users 表 github_access_token 字段 |
+| `packages/api/src/lib/skill-file-parser.ts` | Skill 文件解析逻辑（YAML frontmatter、Markdown 标题提取） |
+| `packages/web/src/components/skill-import-dialog.tsx` | URL 导入对话框组件 |
+| `packages/api/drizzle/migrations/XXXX_add_skill_source_url.sql` | Migration: 添加 skills 表 source_url 列 |
 
 ### 删除文件
 
@@ -259,23 +142,11 @@ skills 表新增列：
 ```typescript
 export const skills = pgTable('skills', {
   // ... 现有列 ...
-  sourceRepoUrl: varchar('source_repo_url', { length: 500 }),
-  sourceCommitSha: varchar('source_commit_sha', { length: 100 }),
-  sourceFilePath: varchar('source_file_path', { length: 500 }),
+  sourceUrl: varchar('source_url', { length: 1000 }),
 })
 ```
 
-users 表新增列：
-
-```typescript
-export const users = pgTable('users', {
-  // ... 现有列 ...
-  githubAccessToken: text('github_access_token'),  // 加密存储
-  githubTokenExpiresAt: timestamp('github_token_expires_at', { withTimezone: true }),
-})
-```
-
-### 2. `packages/api/src/lib/github-skill-importer.ts`
+### 2. `packages/api/src/lib/skill-file-parser.ts`
 
 ```typescript
 import yaml from 'yaml'
@@ -286,14 +157,14 @@ interface SkillMetadata {
   prompt: string
 }
 
-export function parseSkillFile(content: string, filePath: string): SkillMetadata {
+export function parseSkillFile(content: string, url: string): SkillMetadata {
   // 检测 YAML frontmatter
   const frontmatterMatch = content.match(/^---\n([\s\S]+?)\n---\n([\s\S]*)$/)
 
   if (frontmatterMatch) {
     const frontmatter = yaml.parse(frontmatterMatch[1])
     return {
-      name: frontmatter.name || extractNameFromPath(filePath),
+      name: frontmatter.name || extractNameFromUrl(url),
       description: frontmatter.description || null,
       prompt: frontmatterMatch[2].trim(),
     }
@@ -305,188 +176,137 @@ export function parseSkillFile(content: string, filePath: string): SkillMetadata
   const descMatch = lines[1]?.match(/<!--\s*Description:\s*(.+?)\s*-->/)
 
   return {
-    name: titleMatch?.[1] || extractNameFromPath(filePath),
+    name: titleMatch?.[1] || extractNameFromUrl(url),
     description: descMatch?.[1] || null,
     prompt: lines.slice(titleMatch ? 1 : 0).join('\n').trim(),
   }
 }
 
-function extractNameFromPath(filePath: string): string {
-  const fileName = filePath.split('/').pop() || 'Untitled'
-  return fileName.replace(/\.(md|txt|yaml)$/, '').replace(/[-_]/g, ' ')
-}
-
-export async function fetchGitHubFile(
-  owner: string,
-  repo: string,
-  path: string,
-  ref: string,
-  accessToken?: string
-): Promise<string> {
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${ref}`
-  const headers: Record<string, string> = {
-    'Accept': 'application/vnd.github.v3+json',
+function extractNameFromUrl(url: string): string {
+  try {
+    const pathname = new URL(url).pathname
+    const fileName = pathname.split('/').pop() || 'Untitled'
+    return fileName.replace(/\.(md|txt|yaml|yml)$/, '').replace(/[-_]/g, ' ')
+  } catch {
+    return 'Untitled'
   }
-  if (accessToken) {
-    headers['Authorization'] = `Bearer ${accessToken}`
-  }
-
-  const response = await fetch(url, { headers })
-
-  if (!response.ok) {
-    if (response.status === 403) {
-      const rateLimitRemaining = response.headers.get('X-RateLimit-Remaining')
-      if (rateLimitRemaining === '0') {
-        throw new Error('GitHub API rate limit exceeded')
-      }
-    }
-    throw new Error(`GitHub API error: ${response.status}`)
-  }
-
-  const data = await response.json()
-  return Buffer.from(data.content, 'base64').toString('utf-8')
 }
 ```
 
 ### 3. `packages/api/src/routes/skills.ts`
 
-新增导入接口：
+新增解析接口：
 
 ```typescript
-app.post('/api/skills/import-from-github', async (req, res) => {
-  const { repoUrl, filePaths, conflictStrategy, ref = 'main' } = req.body
-  const userId = req.session.userId
+app.post('/api/skills/import-from-url', async (req, res) => {
+  const { url } = req.body
 
-  // 解析仓库 URL
-  const match = repoUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/)
-  if (!match) {
-    return res.status(400).json({ error: 'Invalid GitHub repository URL' })
+  // 校验 URL 格式
+  try {
+    new URL(url)
+  } catch {
+    return res.status(400).json({ error: '无效的 URL 格式' })
   }
-  const [, owner, repo] = match
 
-  // 获取 access token
-  const user = await db.query.users.findFirst({
-    where: eq(users.id, userId),
-  })
-  const accessToken = user?.githubAccessToken ? decrypt(user.githubAccessToken) : undefined
+  // 后端 fetch 文件内容
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10000)
 
-  // 获取当前 commit SHA
-  const commitSha = await fetchLatestCommitSha(owner, repo, ref, accessToken)
+  try {
+    const response = await fetch(url, { signal: controller.signal })
+    clearTimeout(timeout)
 
-  let imported = 0, skipped = 0
-  const errors: Array<{ file: string; reason: string }> = []
-
-  // 并行获取文件内容
-  await Promise.all(filePaths.map(async (filePath) => {
-    try {
-      const content = await fetchGitHubFile(owner, repo, filePath, ref, accessToken)
-
-      if (content.length > 1024 * 1024) {
-        errors.push({ file: filePath, reason: 'File size exceeds 1MB limit' })
-        return
-      }
-
-      const metadata = parseSkillFile(content, filePath)
-
-      // 检查同名 Skill
-      const existing = await db.query.skills.findFirst({
-        where: eq(skills.name, metadata.name),
-      })
-
-      if (existing) {
-        if (conflictStrategy === 'skip') {
-          skipped++
-          errors.push({ file: filePath, reason: 'Skill already exists' })
-          return
-        } else {
-          // overwrite
-          await db.update(skills).set({
-            prompt: metadata.prompt,
-            description: metadata.description,
-            sourceRepoUrl: repoUrl,
-            sourceCommitSha: commitSha,
-            sourceFilePath: filePath,
-            updatedAt: new Date(),
-          }).where(eq(skills.id, existing.id))
-          imported++
-        }
-      } else {
-        // 创建新 Skill
-        await db.insert(skills).values({
-          id: generateId(),
-          name: metadata.name,
-          description: metadata.description,
-          prompt: metadata.prompt,
-          sourceRepoUrl: repoUrl,
-          sourceCommitSha: commitSha,
-          sourceFilePath: filePath,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        })
-        imported++
-      }
-    } catch (error) {
-      errors.push({ file: filePath, reason: error.message })
+    if (!response.ok) {
+      return res.status(400).json({ error: `无法访问该 URL（HTTP ${response.status}）` })
     }
-  }))
 
-  res.json({ imported, skipped, errors })
+    const content = await response.text()
+
+    // 文件大小检查
+    if (content.length > 1024 * 1024) {
+      return res.status(400).json({ error: '文件大小超过 1MB 限制' })
+    }
+
+    // 检测是否为 HTML 页面
+    if (content.trim().startsWith('<!DOCTYPE') || content.trim().startsWith('<html')) {
+      return res.status(400).json({ error: '该 URL 返回的是 HTML 页面，请使用文件的 raw URL' })
+    }
+
+    // 解析文件
+    const metadata = parseSkillFile(content, url)
+
+    res.json({
+      name: metadata.name,
+      description: metadata.description,
+      prompt: metadata.prompt,
+      sourceUrl: url,
+    })
+  } catch (error) {
+    clearTimeout(timeout)
+    if (error.name === 'AbortError') {
+      return res.status(400).json({ error: 'URL 请求超时（10s）' })
+    }
+    return res.status(400).json({ error: `无法访问该 URL: ${error.message}` })
+  }
 })
 ```
 
 ### 4. `packages/web/src/components/skill-import-dialog.tsx`
 
 ```tsx
-export function SkillImportDialog({ open, onOpenChange }: Props) {
-  const [step, setStep] = useState(1)
-  const [repoUrl, setRepoUrl] = useState('')
-  const [files, setFiles] = useState<GitHubFile[]>([])
-  const [selectedFiles, setSelectedFiles] = useState<string[]>([])
-  const [conflictStrategy, setConflictStrategy] = useState<'skip' | 'overwrite'>('skip')
+export function SkillImportDialog({ open, onOpenChange, onImported }: Props) {
+  const [url, setUrl] = useState('')
+  const [preview, setPreview] = useState<SkillPreview | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleFetchFiles = async () => {
-    const response = await fetch('/api/skills/github-files', {
+  const handleParse = async () => {
+    setLoading(true)
+    setError(null)
+
+    const response = await fetch('/api/skills/import-from-url', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ repoUrl }),
+      body: JSON.stringify({ url }),
     })
 
-    if (response.status === 403) {
-      // 需要授权
-      window.location.href = '/auth/github/authorize'
+    const data = await response.json()
+    setLoading(false)
+
+    if (!response.ok) {
+      setError(data.error)
       return
     }
 
-    const data = await response.json()
-    setFiles(data.files)
-    setStep(2)
+    setPreview(data)
   }
 
-  const handleImport = async () => {
-    setStep(4) // 显示进度
-
-    const response = await fetch('/api/skills/import-from-github', {
+  const handleConfirm = async () => {
+    // 调用 POST /api/skills 创建 Skill
+    const response = await fetch('/api/skills', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        repoUrl,
-        filePaths: selectedFiles,
-        conflictStrategy,
+        name: preview.name,
+        description: preview.description,
+        prompt: preview.prompt,
+        sourceUrl: preview.sourceUrl,
       }),
     })
 
-    const result = await response.json()
-    setStep(5) // 显示结果
-    // ... 显示 result.imported, result.skipped, result.errors
+    if (response.ok) {
+      onImported()
+      onOpenChange(false)
+    }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {step === 1 && <StepRepoUrl onNext={handleFetchFiles} />}
-      {step === 2 && <StepSelectFiles files={files} onNext={() => setStep(3)} />}
-      {step === 3 && <StepPreview onImport={handleImport} />}
-      {step === 4 && <StepImporting />}
-      {step === 5 && <StepResult />}
+      {!preview ? (
+        <StepInputUrl url={url} onChange={setUrl} onParse={handleParse} loading={loading} error={error} />
+      ) : (
+        <StepPreview preview={preview} onConfirm={handleConfirm} onBack={() => setPreview(null)} />
+      )}
     </Dialog>
   )
 }
@@ -496,32 +316,25 @@ export function SkillImportDialog({ open, onOpenChange }: Props) {
 
 ## Migration SQL
 
-### 添加 skills 表 source 字段
+### 添加 skills 表 source_url 列
 
 ```sql
-ALTER TABLE skills ADD COLUMN source_repo_url varchar(500);
-ALTER TABLE skills ADD COLUMN source_commit_sha varchar(100);
-ALTER TABLE skills ADD COLUMN source_file_path varchar(500);
-```
-
-### 添加 users 表 github_access_token 字段
-
-```sql
-ALTER TABLE users ADD COLUMN github_access_token text;
-ALTER TABLE users ADD COLUMN github_token_expires_at timestamptz;
+ALTER TABLE skills ADD COLUMN source_url varchar(1000);
 ```
 
 ---
 
 ## 测试策略
 
-- 手动验证：导入 public 仓库 → 无需授权 → 成功导入
-- 手动验证：导入 private 仓库 → 提示授权 → 完成 OAuth → 成功导入
+- 手动验证：粘贴 GitHub raw URL → 成功解析并导入
+- 手动验证：粘贴普通 HTTPS 文件 URL → 成功解析并导入
+- 手动验证：粘贴 GitHub 非 raw URL（HTML 页面）→ 提示使用 raw URL
+- 手动验证：粘贴不存在的 URL → 提示无法访问
 - 手动验证：同名 Skill + skip → 跳过不覆盖
-- 手动验证：同名 Skill + overwrite → 更新 prompt 和 source 字段
+- 手动验证：同名 Skill + overwrite → 更新 prompt 和 sourceUrl
 - 手动验证：YAML frontmatter 文件 → 正确提取 name 和 description
 - 手动验证：Markdown 文件 → 从标题提取 name
+- 手动验证：纯文本文件 → 从 URL 文件名提取 name
 - 手动验证：大文件（>1MB）→ 提示错误，不导入
-- 手动验证：GitHub API rate limit → 提示错误，显示 retryAfter
-- 手动验证：导入后的 Skill 在列表中显示 GitHub 图标和仓库链接
-- 手动验证：点击仓库链接 → 跳转到 GitHub 文件页面
+- 手动验证：导入后的 Skill 在列表中显示来源链接
+- 手动验证：点击来源链接 → 在新标签页打开原始文件
