@@ -273,3 +273,14 @@ export interface AgentRole {
   providerName?: string | null
   modelName?: string | null
 }
+
+// Skill types
+export interface Skill {
+  id: string
+  name: string
+  description: string | null
+  prompt: string
+  sourceUrl: string | null
+  createdAt: string
+  updatedAt: string
+}
