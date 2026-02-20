@@ -322,7 +322,7 @@ export const agentRoles = pgTable('agent_roles', {
 // ============================================================
 export const skills = pgTable('skills', {
   id: uuid('id').primaryKey().defaultRandom(),
-  name: varchar('name', { length: 200 }).notNull(),
+  name: varchar('name', { length: 200 }).notNull().unique(),
   description: text('description'),
   prompt: text('prompt').notNull(),
   sourceUrl: varchar('source_url', { length: 1000 }),

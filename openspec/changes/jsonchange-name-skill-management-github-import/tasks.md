@@ -88,6 +88,11 @@
 - [x] HTML 检测改用 `toLowerCase()` 后统一匹配 **[S]**
 - [x] 确认前端 HTTP 客户端的错误处理方式（ky beforeError hook 已正确提取 error message） **[S]**
 
+### 数据完整性改进
+
+- [x] 在 `schema.ts` 的 `skills` 表 name 列添加 unique 约束 **[S]**
+- [x] 生成 migration 文件添加 skills.name 唯一索引 **[S]**
+
 ## 测试验证
 
 ### 端到端验证
