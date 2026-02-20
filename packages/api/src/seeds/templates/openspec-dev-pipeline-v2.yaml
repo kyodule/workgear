@@ -33,6 +33,17 @@ nodes:
       mode: understand
       transient: true
       prompt_template: |
+        {% if review.comment %}
+        ## ⚠️ 审核打回意见
+        上一版本的需求理解被打回，原因如下：
+        
+        {{review.comment}}
+        
+        请根据以上意见重新理解需求，确保解决所有提出的问题。
+        
+        ---
+        {% endif %}
+        
         请快速理解以下需求，输出 Markdown 格式的理解文档（200-500 字）：
         
         需求：{{nodes.submit_requirement.outputs.requirement_text}}
@@ -115,6 +126,17 @@ nodes:
         schema: "{{params.spec_schema}}"
         init_if_missing: true
       prompt_template: |
+        {% if review.comment %}
+        ## ⚠️ 审核打回意见
+        上一版本的 Spec 被打回，原因如下：
+
+        {{review.comment}}
+
+        请根据以上意见重新生成 OpenSpec 文档，确保解决所有提出的问题。
+
+        ---
+        {% endif %}
+
         基于以下需求理解，使用 OpenSpec 工作流生成完整的规划文档：
 
         ## 需求理解（已确认）
@@ -183,6 +205,17 @@ nodes:
       opsx:
         change_name: "{{nodes.generate_change_name.outputs.change_name}}"
       prompt_template: |
+        {% if review.comment %}
+        ## ⚠️ 审核打回意见
+        上一版本的代码实施被打回，原因如下：
+
+        {{review.comment}}
+
+        请根据以上意见重新实施代码，确保解决所有提出的问题。
+
+        ---
+        {% endif %}
+
         请按照 OpenSpec 的规划文档实施所有任务。
 
         变更名称：{{nodes.generate_change_name.outputs.change_name}}
