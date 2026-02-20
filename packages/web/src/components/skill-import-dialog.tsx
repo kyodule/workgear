@@ -22,6 +22,8 @@ interface SkillPreview {
   sourceUrl: string
 }
 
+const PROMPT_PREVIEW_LINES = 10
+
 export function SkillImportDialog({ open, onOpenChange, onImported, existingSkills }: SkillImportDialogProps) {
   const [url, setUrl] = useState('')
   const [preview, setPreview] = useState<SkillPreview | null>(null)
@@ -29,6 +31,7 @@ export function SkillImportDialog({ open, onOpenChange, onImported, existingSkil
   const [importing, setImporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [conflictStrategy, setConflictStrategy] = useState<'skip' | 'overwrite'>('skip')
+  const [promptExpanded, setPromptExpanded] = useState(false)
 
   const hasConflict = preview && existingSkills.some(s => s.name === preview.name)
 
@@ -109,6 +112,7 @@ export function SkillImportDialog({ open, onOpenChange, onImported, existingSkil
   const handleBack = () => {
     setPreview(null)
     setError(null)
+    setPromptExpanded(false)
   }
 
   const handleClose = () => {
@@ -116,6 +120,7 @@ export function SkillImportDialog({ open, onOpenChange, onImported, existingSkil
     setUrl('')
     setPreview(null)
     setError(null)
+    setPromptExpanded(false)
   }
 
   return (
@@ -187,16 +192,38 @@ export function SkillImportDialog({ open, onOpenChange, onImported, existingSkil
 
             <div className="space-y-2">
               <Label htmlFor="prompt">Prompt 预览</Label>
-              <Textarea
-                id="prompt"
-                value={preview.prompt.slice(0, 500) + (preview.prompt.length > 500 ? '...' : '')}
-                readOnly
-                rows={8}
-                className="font-mono text-sm"
-              />
-              <p className="text-sm text-gray-500">
-                完整内容共 {preview.prompt.length} 字符
-              </p>
+              {(() => {
+                const lines = preview.prompt.split('\n')
+                const isLong = lines.length > PROMPT_PREVIEW_LINES
+                const displayText = promptExpanded || !isLong
+                  ? preview.prompt
+                  : lines.slice(0, PROMPT_PREVIEW_LINES).join('\n') + '\n...'
+                return (
+                  <>
+                    <Textarea
+                      id="prompt"
+                      value={displayText}
+                      readOnly
+                      rows={promptExpanded ? Math.min(lines.length, 20) : Math.min(lines.length, PROMPT_PREVIEW_LINES)}
+                      className="font-mono text-sm"
+                    />
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-gray-500">
+                        共 {lines.length} 行，{preview.prompt.length} 字符
+                      </p>
+                      {isLong && (
+                        <button
+                          type="button"
+                          onClick={() => setPromptExpanded(!promptExpanded)}
+                          className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          {promptExpanded ? '收起' : '展开全部'}
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )
+              })()}
             </div>
 
             <div className="space-y-2">
