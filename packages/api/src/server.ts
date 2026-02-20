@@ -24,13 +24,14 @@ const PORT = parseInt(process.env.PORT || '4000', 10)
 const HOST = process.env.HOST || '0.0.0.0'
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production'
 
+const isDev = process.env.NODE_ENV !== 'production'
+
 const app = Fastify({
   logger: {
     level: 'info',
-    transport: {
-      target: 'pino-pretty',
-      options: { colorize: true },
-    },
+    ...(isDev
+      ? { transport: { target: 'pino-pretty', options: { colorize: true } } }
+      : {}),
   },
 })
 
