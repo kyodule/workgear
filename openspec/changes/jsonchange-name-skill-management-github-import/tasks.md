@@ -6,7 +6,7 @@
 
 - [x] 在 `schema.ts` 的 `skills` 表定义中新增 `sourceUrl: varchar('source_url', { length: 1000 })` 列 **[S]**
 - [x] 生成 Drizzle migration 文件：`ALTER TABLE skills ADD COLUMN source_url varchar(1000)` **[S]**
-- [ ] 执行 migration 验证列已添加 **[S]**
+- [x] 执行 migration 验证列已添加 **[S]**
 
 ## 模块：文件解析核心逻辑 (packages/api/src/lib)
 
