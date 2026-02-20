@@ -3,6 +3,8 @@ import { db } from '../db/index.js'
 import { skills } from '../db/schema.js'
 import { eq } from 'drizzle-orm'
 import { parseSkillFile } from '../lib/skill-file-parser.js'
+import { validateUrlSafety } from '../lib/url-validator.js'
+import { validateUuid } from '../lib/uuid-validator.js'
 
 export default async function skillsRoutes(app: FastifyInstance) {
   // GET /api/skills - 获取所有 Skills
@@ -16,8 +18,7 @@ export default async function skillsRoutes(app: FastifyInstance) {
     const { id } = req.params
 
     // 验证 UUID 格式
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    if (!uuidRegex.test(id)) {
+    if (!validateUuid(id)) {
       return res.status(400).send({ error: '无效的 Skill ID 格式' })
     }
 
@@ -39,15 +40,10 @@ export default async function skillsRoutes(app: FastifyInstance) {
       return res.status(400).send({ error: '请提供有效的 URL' })
     }
 
-    // 校验 URL 格式
-    try {
-      const parsedUrl = new URL(url.trim())
-      // 只允许 http 和 https 协议
-      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-        return res.status(400).send({ error: '仅支持 HTTP 和 HTTPS 协议' })
-      }
-    } catch {
-      return res.status(400).send({ error: '无效的 URL 格式' })
+    // 校验 URL 格式和安全性（防止 SSRF）
+    const urlValidation = validateUrlSafety(url.trim())
+    if (!urlValidation.valid) {
+      return res.status(400).send({ error: urlValidation.error })
     }
 
     // 后端 fetch 文件内容
@@ -73,9 +69,15 @@ export default async function skillsRoutes(app: FastifyInstance) {
         return res.status(400).send({ error: `无法访问该 URL（HTTP ${response.status}）` })
       }
 
+      // 检查 Content-Length 限制（1MB）
+      const contentLength = response.headers.get('content-length')
+      if (contentLength && parseInt(contentLength, 10) > 1024 * 1024) {
+        return res.status(400).send({ error: '文件大小超过 1MB 限制' })
+      }
+
       const content = await response.text()
 
-      // 文件大小检查
+      // 二次检查文件大小（防止没有 Content-Length 的情况）
       if (content.length > 1024 * 1024) {
         return res.status(400).send({ error: '文件大小超过 1MB 限制' })
       }
@@ -87,9 +89,9 @@ export default async function skillsRoutes(app: FastifyInstance) {
 
       // 检测是否为 HTML 页面
       const trimmedContent = content.trim()
-      if (trimmedContent.startsWith('<!DOCTYPE') ||
-          trimmedContent.startsWith('<html') ||
-          trimmedContent.startsWith('<HTML')) {
+      const lowerContent = trimmedContent.toLowerCase()
+      if (lowerContent.startsWith('<!doctype') ||
+          lowerContent.startsWith('<html')) {
         return res.status(400).send({ error: '该 URL 返回的是 HTML 页面，请使用文件的 raw URL' })
       }
 
@@ -202,8 +204,7 @@ export default async function skillsRoutes(app: FastifyInstance) {
     const { name, description, prompt } = req.body
 
     // 验证 UUID 格式
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    if (!uuidRegex.test(id)) {
+    if (!validateUuid(id)) {
       return res.status(400).send({ error: '无效的 Skill ID 格式' })
     }
 
@@ -243,8 +244,7 @@ export default async function skillsRoutes(app: FastifyInstance) {
     const { id } = req.params
 
     // 验证 UUID 格式
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    if (!uuidRegex.test(id)) {
+    if (!validateUuid(id)) {
       return res.status(400).send({ error: '无效的 Skill ID 格式' })
     }
 

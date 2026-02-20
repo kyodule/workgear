@@ -73,6 +73,21 @@
 - [x] 实现确认导入（调用 `POST /api/skills`） **[S]**
 - [x] 实现导入成功后关闭对话框并刷新列表 **[S]**
 
+## 模块：代码审查修复 (Review Fixes)
+
+### 安全性修复
+
+- [x] 修复 SSRF 漏洞：创建 `url-validator.ts` 添加内网 IP 黑名单校验 **[M]**
+- [x] 修复内存安全：在 `response.text()` 前通过 Content-Length 限制响应体大小 **[S]**
+
+### 代码质量改进
+
+- [x] 为 `parseSkillFile` 添加单元测试（`skill-file-parser.test.ts`），覆盖 YAML/Markdown/纯文本/异常输入场景 **[M]**
+- [x] 前端增加对 409 冲突响应的处理逻辑 **[S]**
+- [x] 提取 UUID 校验为共享函数（`uuid-validator.ts`） **[S]**
+- [x] HTML 检测改用 `toLowerCase()` 后统一匹配 **[S]**
+- [x] 确认前端 HTTP 客户端的错误处理方式（ky beforeError hook 已正确提取 error message） **[S]**
+
 ## 测试验证
 
 ### 端到端验证

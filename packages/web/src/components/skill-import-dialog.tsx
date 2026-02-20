@@ -48,8 +48,8 @@ export function SkillImportDialog({ open, onOpenChange, onImported, existingSkil
 
       setPreview(response)
     } catch (err: any) {
-      const errorMessage = err?.response?.json?.error || err?.message || '解析失败，请检查 URL 是否正确'
-      setError(errorMessage)
+      // The ky beforeError hook already extracts error.message from response body
+      setError(err?.message || '解析失败，请检查 URL 是否正确')
     } finally {
       setLoading(false)
     }
@@ -68,7 +68,7 @@ export function SkillImportDialog({ open, onOpenChange, onImported, existingSkil
     setError(null)
 
     try {
-      const result = await api.post('skills', {
+      const response = await api.post('skills', {
         json: {
           name: preview.name.trim(),
           description: preview.description?.trim() || null,
@@ -76,7 +76,9 @@ export function SkillImportDialog({ open, onOpenChange, onImported, existingSkil
           sourceUrl: preview.sourceUrl,
           conflictStrategy: hasConflict ? conflictStrategy : undefined,
         },
-      }).json<any>()
+      })
+
+      const result = await response.json<any>()
 
       // 如果是跳过策略，显示提示
       if (result.skipped) {
@@ -92,8 +94,13 @@ export function SkillImportDialog({ open, onOpenChange, onImported, existingSkil
       setPreview(null)
       setError(null)
     } catch (err: any) {
-      const errorMessage = err?.response?.json?.error || err?.message || '导入失败'
-      setError(errorMessage)
+      // Handle 409 conflict response
+      if (err?.response?.status === 409) {
+        setError('Skill 名称已存在，请修改名称或选择覆盖策略')
+      } else {
+        // The ky beforeError hook already extracts error.message from response body
+        setError(err?.message || '导入失败')
+      }
     } finally {
       setImporting(false)
     }
