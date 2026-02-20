@@ -29,13 +29,14 @@ export function SkillsPage() {
   }
 
   async function handleDelete(skill: Skill) {
-    if (!confirm(`确定要删除 Skill "${skill.name}" 吗？`)) return
+    if (!confirm(`确定要删除 Skill "${skill.name}" 吗？\n\n此操作不可恢复。`)) return
     try {
       await api.delete(`skills/${skill.id}`)
       await loadSkills()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to delete skill:', error)
-      alert('删除失败')
+      const errorMessage = error?.response?.json?.error || error?.message || '删除失败'
+      alert(`删除失败：${errorMessage}`)
     }
   }
 
@@ -68,9 +69,13 @@ export function SkillsPage() {
           <div className="flex flex-col items-center justify-center h-64 text-center">
             <FileText className="h-12 w-12 text-gray-300 mb-4" />
             <p className="text-gray-500 mb-2">暂无 Skills</p>
-            <p className="text-sm text-gray-400 mb-4">
-              点击右上角「从 URL 导入」按钮开始导入 Skill 定义
+            <p className="text-sm text-gray-400 mb-4 max-w-md">
+              Skills 是可复用的 Prompt 定义，可以从 GitHub 或其他 URL 导入
             </p>
+            <Button size="sm" onClick={() => setShowImportDialog(true)}>
+              <Download className="mr-1 h-4 w-4" />
+              从 URL 导入第一个 Skill
+            </Button>
           </div>
         ) : (
           <div className="grid gap-4">
@@ -131,9 +136,15 @@ function SkillCard({ skill, onDelete }: SkillCardProps) {
               <Badge variant="outline" className="text-xs">
                 从 URL 导入
               </Badge>
-              <span className="text-xs text-gray-500 truncate max-w-md">
+              <a
+                href={skill.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-blue-600 hover:text-blue-800 truncate max-w-md hover:underline"
+                title={skill.sourceUrl}
+              >
                 {skill.sourceUrl}
-              </span>
+              </a>
             </div>
           )}
 

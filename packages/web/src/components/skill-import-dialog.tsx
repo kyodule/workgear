@@ -43,12 +43,13 @@ export function SkillImportDialog({ open, onOpenChange, onImported, existingSkil
 
     try {
       const response = await api.post('skills/import-from-url', {
-        json: { url },
+        json: { url: url.trim() },
       }).json<SkillPreview>()
 
       setPreview(response)
     } catch (err: any) {
-      setError(err.response?.data?.error || '解析失败，请检查 URL 是否正确')
+      const errorMessage = err?.response?.json?.error || err?.message || '解析失败，请检查 URL 是否正确'
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -57,19 +58,31 @@ export function SkillImportDialog({ open, onOpenChange, onImported, existingSkil
   const handleConfirm = async () => {
     if (!preview) return
 
+    // 验证名称不能为空
+    if (!preview.name.trim()) {
+      setError('Skill 名称不能为空')
+      return
+    }
+
     setImporting(true)
     setError(null)
 
     try {
-      await api.post('skills', {
+      const result = await api.post('skills', {
         json: {
-          name: preview.name,
-          description: preview.description,
+          name: preview.name.trim(),
+          description: preview.description?.trim() || null,
           prompt: preview.prompt,
           sourceUrl: preview.sourceUrl,
           conflictStrategy: hasConflict ? conflictStrategy : undefined,
         },
-      })
+      }).json<any>()
+
+      // 如果是跳过策略，显示提示
+      if (result.skipped) {
+        setError('Skill 已存在，已跳过导入')
+        return
+      }
 
       onOpenChange(false)
       onImported?.()
@@ -79,7 +92,8 @@ export function SkillImportDialog({ open, onOpenChange, onImported, existingSkil
       setPreview(null)
       setError(null)
     } catch (err: any) {
-      setError(err.response?.data?.error || '导入失败')
+      const errorMessage = err?.response?.json?.error || err?.message || '导入失败'
+      setError(errorMessage)
     } finally {
       setImporting(false)
     }
@@ -107,16 +121,17 @@ export function SkillImportDialog({ open, onOpenChange, onImported, existingSkil
         {!preview ? (
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="url">文件 URL</Label>
+              <Label htmlFor="url">文件 URL *</Label>
               <Input
                 id="url"
                 placeholder="https://raw.githubusercontent.com/owner/repo/main/prompt.md"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleParse()}
+                autoFocus
               />
               <p className="text-sm text-gray-500">
-                支持 GitHub raw URL 或任意公开可访问的文件 URL
+                支持 GitHub raw URL 或任意公开可访问的文件 URL（最大 1MB）
               </p>
             </div>
 
@@ -140,20 +155,26 @@ export function SkillImportDialog({ open, onOpenChange, onImported, existingSkil
         ) : (
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">名称</Label>
+              <Label htmlFor="name">名称 *</Label>
               <Input
                 id="name"
                 value={preview.name}
                 onChange={(e) => setPreview({ ...preview, name: e.target.value })}
+                maxLength={200}
+                placeholder="请输入 Skill 名称"
               />
+              <p className="text-xs text-gray-500">
+                {preview.name.length}/200 字符
+              </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">描述</Label>
+              <Label htmlFor="description">描述（可选）</Label>
               <Input
                 id="description"
                 value={preview.description || ''}
                 onChange={(e) => setPreview({ ...preview, description: e.target.value || null })}
+                placeholder="请输入 Skill 描述"
               />
             </div>
 
@@ -180,9 +201,9 @@ export function SkillImportDialog({ open, onOpenChange, onImported, existingSkil
               <div className="space-y-2 p-3 bg-yellow-50 border border-yellow-200 rounded">
                 <div className="flex items-start gap-2 text-sm text-yellow-800">
                   <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                  <span>已存在同名 Skill，请选择处理方式：</span>
+                  <span>已存在同名 Skill "{preview.name}"，请选择处理方式：</span>
                 </div>
-                <div className="flex gap-2 ml-6">
+                <div className="flex flex-col gap-2 ml-6">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="radio"
@@ -190,8 +211,9 @@ export function SkillImportDialog({ open, onOpenChange, onImported, existingSkil
                       value="skip"
                       checked={conflictStrategy === 'skip'}
                       onChange={() => setConflictStrategy('skip')}
+                      className="cursor-pointer"
                     />
-                    <span className="text-sm">跳过（保留现有）</span>
+                    <span className="text-sm">跳过（保留现有 Skill，不导入）</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -200,8 +222,9 @@ export function SkillImportDialog({ open, onOpenChange, onImported, existingSkil
                       value="overwrite"
                       checked={conflictStrategy === 'overwrite'}
                       onChange={() => setConflictStrategy('overwrite')}
+                      className="cursor-pointer"
                     />
-                    <span className="text-sm">覆盖（更新现有）</span>
+                    <span className="text-sm">覆盖（用新内容更新现有 Skill）</span>
                   </label>
                 </div>
               </div>
@@ -218,7 +241,10 @@ export function SkillImportDialog({ open, onOpenChange, onImported, existingSkil
               <Button variant="outline" onClick={handleBack} disabled={importing}>
                 返回
               </Button>
-              <Button onClick={handleConfirm} disabled={importing}>
+              <Button
+                onClick={handleConfirm}
+                disabled={importing || !preview.name.trim()}
+              >
                 {importing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 确认导入
               </Button>
