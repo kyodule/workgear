@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { FileText, Plus, Pencil, Trash2, ExternalLink, Download } from 'lucide-react'
+import { FileText, Trash2, ExternalLink, Download } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Skill } from '@/lib/types'
 import { Button } from '@/components/ui/button'

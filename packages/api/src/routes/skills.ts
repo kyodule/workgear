@@ -8,7 +8,7 @@ import { validateUuid } from '../lib/uuid-validator.js'
 
 export default async function skillsRoutes(app: FastifyInstance) {
   // GET /api/skills - 获取所有 Skills
-  app.get('/api/skills', async (req, res) => {
+  app.get('/api/skills', async (_req, res) => {
     const allSkills = await db.select().from(skills)
     res.send(allSkills)
   })
