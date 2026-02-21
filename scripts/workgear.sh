@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # WorkGear 服务管理脚本
 # 用法: workgear.sh {start|stop|restart|status|logs}
@@ -14,7 +14,15 @@ LOG_DIR="$ROOT_DIR/logs"
 
 # ─── 服务定义 ───────────────────────────────────────────
 SERVICES=(web api orchestrator)
-declare -A PORTS=([web]=3000 [api]=4000 [orchestrator]=50051)
+
+# 端口映射（兼容 bash 3.2）
+get_port() {
+  case "$1" in
+    web) echo 3000 ;;
+    api) echo 4000 ;;
+    orchestrator) echo 50051 ;;
+  esac
+}
 
 # ─── 颜色 ───────────────────────────────────────────────
 RED='\033[0;31m'
@@ -115,7 +123,8 @@ start_service() {
   fi
 
   # 检查端口是否被占用
-  local port="${PORTS[$svc]}"
+  local port
+  port="$(get_port "$svc")"
   if check_port "$port"; then
     fail "端口 $port 已被占用，无法启动 $svc"
     echo "    占用进程: $(lsof -i :"$port" -sTCP:LISTEN -t 2>/dev/null || echo '未知')"
@@ -211,7 +220,8 @@ health_check() {
   local all_ok=true
 
   for svc in "${SERVICES[@]}"; do
-    local port="${PORTS[$svc]}"
+    local port
+    port="$(get_port "$svc")"
     local timeout=15
     [[ "$svc" == "orchestrator" ]] && timeout=10
 
@@ -278,9 +288,8 @@ cmd_status() {
   printf "  %-16s %-10s %-8s %-6s\n" "───────────────" "─────────" "───────" "─────"
 
   for svc in "${SERVICES[@]}"; do
-    local port="${PORTS[$svc]}"
-    local pid status
-
+    local port pid status
+    port="$(get_port "$svc")"
     pid="$(read_pid "$svc")"
 
     if [[ -n "$pid" ]] && ps -p "$pid" > /dev/null 2>&1; then
