@@ -139,21 +139,20 @@ start_service() {
 
   case "$svc" in
     web)
-      # 使用 setsid 创建新进程组，确保子进程可被一起 kill
-      setsid nohup npx vite preview \
+      nohup npx vite preview \
         --host 0.0.0.0 --port 3000 --strictPort \
         >> "$log" 2>&1 &
       echo $! > "$(pid_file web)"
       ;;
     api)
       (cd "$ROOT_DIR/packages/api" && \
-        setsid nohup node dist/server.js >> "$log" 2>&1 &
+        nohup node dist/server.js >> "$log" 2>&1 &
         echo $! > "$(pid_file api)")
       ;;
     orchestrator)
       (cd "$ROOT_DIR/packages/orchestrator" && \
         if [[ -f .env ]]; then set -a && source .env && set +a; fi && \
-        setsid nohup ./bin/orchestrator >> "$log" 2>&1 &
+        nohup ./bin/orchestrator >> "$log" 2>&1 &
         echo $! > "$(pid_file orchestrator)")
       ;;
   esac
@@ -185,8 +184,13 @@ stop_service() {
 
   info "正在停止 $svc (PID: $pid)..."
 
-  # 先尝试优雅退出（发给进程组）
-  kill -TERM -- -"$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+  # 获取端口用于兜底清理
+  local port
+  port="$(get_port "$svc")"
+
+  # 先尝试优雅退出（主进程 + 子进程树）
+  kill -TERM "$pid" 2>/dev/null || true
+  pkill -TERM -P "$pid" 2>/dev/null || true
 
   # 等待 3 秒
   local waited=0
@@ -200,10 +204,17 @@ stop_service() {
     (( waited++ ))
   done
 
-  # 强制 kill
+  # 强制 kill（主进程 + 子进程树）
   warn "$svc 未响应 SIGTERM，强制终止..."
-  kill -9 -- -"$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || true
+  kill -9 "$pid" 2>/dev/null || true
+  pkill -9 -P "$pid" 2>/dev/null || true
   sleep 0.5
+
+  # 端口兜底清理（如果端口还被占用）
+  if check_port "$port"; then
+    warn "端口 $port 仍被占用，按端口清理残留进程..."
+    lsof -i :"$port" -sTCP:LISTEN -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+  fi
 
   if ! ps -p "$pid" > /dev/null 2>&1; then
     ok "$svc 已强制停止"
