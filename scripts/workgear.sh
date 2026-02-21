@@ -58,7 +58,15 @@ read_pid() {
 }
 
 check_port() {
-  lsof -i :"$1" -sTCP:LISTEN -t > /dev/null 2>&1
+  local port=$1
+  # 尝试 3 次，每次间隔 0.5s
+  for i in 1 2 3; do
+    if lsof -i :"$port" -sTCP:LISTEN > /dev/null 2>&1; then
+      return 0
+    fi
+    [[ $i -lt 3 ]] && sleep 0.5
+  done
+  return 1
 }
 
 wait_for_port() {
@@ -139,10 +147,9 @@ start_service() {
 
   case "$svc" in
     web)
-      nohup npx vite preview \
-        --host 0.0.0.0 --port 3000 --strictPort \
-        >> "$log" 2>&1 &
-      echo $! > "$(pid_file web)"
+      (cd "$ROOT_DIR/packages/web" && \
+        nohup pnpm preview --host 0.0.0.0 --port 3000 --strictPort >> "$log" 2>&1 &
+        echo $! > "$(pid_file web)")
       ;;
     api)
       (cd "$ROOT_DIR/packages/api" && \
@@ -227,14 +234,17 @@ stop_service() {
 # ─── 健康检查 ───────────────────────────────────────────
 health_check() {
   echo ""
+  info "等待服务启动..."
+  sleep 3
+  
   info "检查服务健康状态..."
   local all_ok=true
 
   for svc in "${SERVICES[@]}"; do
     local port
     port="$(get_port "$svc")"
-    local timeout=15
-    [[ "$svc" == "orchestrator" ]] && timeout=10
+    local timeout=20
+    [[ "$svc" == "orchestrator" ]] && timeout=15
 
     if wait_for_port "$port" "$svc" "$timeout"; then
       ok "$svc 正在监听 :$port"
