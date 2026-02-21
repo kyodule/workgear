@@ -8,6 +8,11 @@
     "dev:web": "pnpm --filter @workgear/web dev",
     "dev:api": "pnpm --filter @workgear/api dev",
     "dev:orchestrator": "cd packages/orchestrator && make run",
+    "start": "bash scripts/workgear.sh start",
+    "stop": "bash scripts/workgear.sh stop",
+    "restart": "bash scripts/workgear.sh restart",
+    "status": "bash scripts/workgear.sh status",
+    "logs": "bash scripts/workgear.sh logs",
     "build": "pnpm --recursive build",
     "clean": "pnpm --recursive clean"
   },

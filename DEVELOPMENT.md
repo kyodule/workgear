@@ -107,21 +107,84 @@ cd packages/orchestrator && go build ./cmd/server
 
 ## 日常开发流程
 
-### 启动开发环境
+### 启动模式选择
+
+WorkGear 支持两种启动模式：
+
+| 模式 | 命令 | 适用场景 | 特点 |
+|------|------|---------|------|
+| **前台模式** | `pnpm dev` | 开发调试 | 实时日志输出，Ctrl+C 停止 |
+| **后台模式** | `pnpm start` | 长期运行、测试 | 后台运行，日志写入文件 |
+
+### 方式一：前台模式（开发推荐）
 
 ```bash
 # 1. 启动数据库（如果未运行）
 cd docker && docker-compose up -d && cd ..
 
-# 2. 启动所有服务（推荐）
+# 2. 启动所有服务（前台）
 pnpm dev
 # 这会同时启动前端（:3000）、API（:4000）和 Orchestrator（:50051）
+# 日志实时输出到终端，Ctrl+C 停止所有服务
 
 # 或者分别启动各个服务
 pnpm run dev:web           # 前端
 pnpm run dev:api           # API
 pnpm run dev:orchestrator  # Orchestrator
 ```
+
+### 方式二：后台模式（生产模拟）
+
+```bash
+# 启动所有服务（后台）
+pnpm start
+# 输出示例：
+# ✅ web 已启动 (PID: 12345)
+# ✅ api 已启动 (PID: 12346)
+# ✅ orchestrator 已启动 (PID: 12347)
+# ℹ  检查服务健康状态...
+# ✅ web 正在监听 :3000
+# ✅ api 正在监听 :4000
+# ✅ orchestrator 正在监听 :50051
+
+# 查看服务状态
+pnpm status
+# 输出示例：
+#   SERVICE          STATUS     PID      PORT
+#   ─────────────── ───────── ─────── ─────
+#   web              RUNNING   12345   :3000
+#   api              RUNNING   12346   :4000
+#   orchestrator     RUNNING   12347   :50051
+
+# 查看日志
+pnpm logs              # 所有服务日志（实时）
+pnpm logs web          # 仅 web 日志
+pnpm logs api          # 仅 api 日志
+pnpm logs orchestrator # 仅 orchestrator 日志
+
+# 停止所有服务
+pnpm stop
+# 输出示例：
+# ℹ  正在停止 web (PID: 12345)...
+# ✅ web 已停止
+# ℹ  正在停止 api (PID: 12346)...
+# ✅ api 已停止
+# ℹ  正在停止 orchestrator (PID: 12347)...
+# ✅ orchestrator 已停止
+
+# 重启所有服务
+pnpm restart
+```
+
+**后台模式特性**：
+- 自动构建（build）后再启动
+- 自动检查 Docker 数据库，未运行则启动
+- 端口冲突检测（启动前检查端口占用）
+- 健康检查（启动后等待端口监听，超时报错）
+- 优雅退出（先 SIGTERM，3 秒后 SIGKILL）
+- 子进程清理（使用进程组 kill，避免 vite 子进程残留）
+- PID 文件管理（`pids/web.pid` 等）
+- 日志分离（`logs/web.log` 等）
 
 ### 服务访问地址
 
@@ -134,7 +197,10 @@ pnpm run dev:orchestrator  # Orchestrator
 ### 停止服务
 
 ```bash
-# 停止前端/API（Ctrl+C）
+# 前台模式：Ctrl+C
+
+# 后台模式：
+pnpm stop
 
 # 停止数据库
 cd docker && docker-compose down
@@ -330,7 +396,8 @@ export GRPC_PORT=50051
 ### 根目录命令
 
 ```bash
-# 同时启动前端、API 和 Orchestrator（开发模式）
+# ─── 前台模式（开发） ───
+# 同时启动前端、API 和 Orchestrator（开发模式，热重载）
 pnpm dev
 
 # 单独启动某个服务
@@ -338,6 +405,26 @@ pnpm run dev:web           # 前端
 pnpm run dev:api           # API Server
 pnpm run dev:orchestrator  # Go Orchestrator
 
+# ─── 后台模式（生产模拟） ───
+# 启动所有服务（构建 + 后台运行 + 健康检查）
+pnpm start
+
+# 停止所有服务（优雅退出 + 强制终止）
+pnpm stop
+
+# 重启所有服务
+pnpm restart
+
+# 查看服务状态（PID + 端口监听）
+pnpm status
+
+# 查看日志（实时）
+pnpm logs              # 所有服务
+pnpm logs web          # 仅 web
+pnpm logs api          # 仅 api
+pnpm logs orchestrator # 仅 orchestrator
+
+# ─── 构建和清理 ───
 # 构建所有包
 pnpm build
 
