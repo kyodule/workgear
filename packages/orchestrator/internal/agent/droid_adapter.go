@@ -42,7 +42,7 @@ func (a *DroidAdapter) Name() string { return "droid" }
 
 func (a *DroidAdapter) BuildRequest(ctx context.Context, req *AgentRequest) (*ExecutorRequest, error) {
 	// Build full prompt
-	prompt := a.promptBuilder.Build(req)
+	prompt := a.promptBuilder.Build(req, req.Skills)
 
 	// Prepare environment variables
 	env := map[string]string{

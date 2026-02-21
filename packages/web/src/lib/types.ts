@@ -267,6 +267,7 @@ export interface AgentRole {
   providerId: string | null
   modelId: string | null
   systemPrompt: string
+  skillIds: string[]
   isBuiltin: boolean
   createdAt: string
   updatedAt: string

@@ -54,6 +54,18 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 		e.logger.Warnw("Failed to get role config from DB", "role", role, "error", err)
 	}
 
+	// 5a. Load skills associated with the role
+	var skills []*db.Skill
+	if roleConfig != nil && len(roleConfig.SkillIDs) > 0 {
+		skills, err = e.db.GetSkillsByIDs(ctx, roleConfig.SkillIDs)
+		if err != nil {
+			e.logger.Warnw("Failed to load skills for role", "role", role, "error", err)
+			skills = []*db.Skill{} // Continue without skills on error
+		} else {
+			e.logger.Infow("Loaded skills for role", "role", role, "skill_count", len(skills))
+		}
+	}
+
 	// 6. Determine model: DSL explicit config > registry mapping > adapter default
 	model := ""
 	if nodeDef.Agent != nil && nodeDef.Agent.Model != "" {
@@ -211,6 +223,7 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 		Feedback:        feedback,
 		Model:           model,
 		Timeout:         timeout,
+		Skills:          skills,
 		WorktreePath:    worktreePath,
 		DepsPath:        depsPath,
 	}

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { agentRoles, agentProviders, agentModels } from '../db/schema.js'
+import { agentRoles, agentProviders, agentModels, skills } from '../db/schema.js'
 import * as orchestrator from '../grpc/client.js'
 
 async function notifyReload(request: any, reply: any): Promise<boolean> {
@@ -68,9 +68,10 @@ export async function agentRoleRoutes(app: FastifyInstance) {
       providerId?: string | null
       modelId?: string | null
       systemPrompt: string
+      skillIds?: string[]
     }
   }>('/', async (request, reply) => {
-    const { slug, name, description, agentType, providerId, modelId, systemPrompt } = request.body
+    const { slug, name, description, agentType, providerId, modelId, systemPrompt, skillIds } = request.body
 
     if (!slug || !name || !systemPrompt) {
       return reply.status(400).send({ error: 'slug, name, systemPrompt are required' })
@@ -86,6 +87,7 @@ export async function agentRoleRoutes(app: FastifyInstance) {
         providerId: providerId || null,
         modelId: modelId || null,
         systemPrompt,
+        skillIds: skillIds || [],
         isBuiltin: false,
       })
       .returning()
@@ -105,10 +107,11 @@ export async function agentRoleRoutes(app: FastifyInstance) {
       providerId?: string | null
       modelId?: string | null
       systemPrompt?: string
+      skillIds?: string[]
     }
   }>('/:id', async (request, reply) => {
     const { id } = request.params
-    const { name, description, agentType, providerId, modelId, systemPrompt } = request.body
+    const { name, description, agentType, providerId, modelId, systemPrompt, skillIds } = request.body
 
     const existing = await db
       .select()
@@ -125,6 +128,7 @@ export async function agentRoleRoutes(app: FastifyInstance) {
     if (providerId !== undefined) updateData.providerId = providerId
     if (modelId !== undefined) updateData.modelId = modelId
     if (systemPrompt !== undefined) updateData.systemPrompt = systemPrompt
+    if (skillIds !== undefined) updateData.skillIds = skillIds
 
     const result = await db
       .update(agentRoles)
@@ -264,5 +268,74 @@ export async function agentRoleRoutes(app: FastifyInstance) {
         error: error.message || 'Failed to test agent' 
       })
     }
+  })
+
+  // 获取角色关联的 Skills
+  app.get<{ Params: { id: string } }>('/:id/skills', async (request, reply) => {
+    const { id } = request.params
+
+    const role = await db
+      .select()
+      .from(agentRoles)
+      .where(eq(agentRoles.id, id))
+    
+    if (role.length === 0) {
+      return reply.status(404).send({ error: 'Agent role not found' })
+    }
+
+    const skillIds = role[0].skillIds as string[]
+    if (!skillIds || skillIds.length === 0) {
+      return []
+    }
+
+    const roleSkills = await db
+      .select()
+      .from(skills)
+      .where(inArray(skills.id, skillIds))
+    
+    return roleSkills
+  })
+
+  // 更新角色的 Skill 关联
+  app.put<{
+    Params: { id: string }
+    Body: { skillIds: string[] }
+  }>('/:id/skills', async (request, reply) => {
+    const { id } = request.params
+    const { skillIds } = request.body
+
+    if (!Array.isArray(skillIds)) {
+      return reply.status(400).send({ error: 'skillIds must be an array' })
+    }
+
+    const existing = await db
+      .select()
+      .from(agentRoles)
+      .where(eq(agentRoles.id, id))
+    
+    if (existing.length === 0) {
+      return reply.status(404).send({ error: 'Agent role not found' })
+    }
+
+    // 验证所有 skill IDs 是否存在
+    if (skillIds.length > 0) {
+      const existingSkills = await db
+        .select()
+        .from(skills)
+        .where(inArray(skills.id, skillIds))
+      
+      if (existingSkills.length !== skillIds.length) {
+        return reply.status(400).send({ error: 'One or more skill IDs are invalid' })
+      }
+    }
+
+    await db
+      .update(agentRoles)
+      .set({ skillIds, updatedAt: new Date() })
+      .where(eq(agentRoles.id, id))
+
+    if (!await notifyReload(request, reply)) return
+
+    return { success: true }
   })
 }

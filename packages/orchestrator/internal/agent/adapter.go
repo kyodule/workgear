@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/sunshow/workgear/orchestrator/internal/db"
 )
 
 // ─── Default Timeout Constants ───
@@ -59,6 +61,7 @@ type AgentRequest struct {
 	Model           string         `json:"model"` // Request-level model (highest priority)
 	Timeout         time.Duration  `json:"timeout,omitempty"` // Execution timeout from DSL
 	OpsxConfig      *OpsxConfig    `json:"opsx,omitempty"`
+	Skills          []*db.Skill    `json:"skills,omitempty"` // Associated skills for this role
 	// Git repo cache: pre-created worktree paths
 	WorktreePath    string         `json:"worktree_path,omitempty"`
 	DepsPath        string         `json:"deps_path,omitempty"`

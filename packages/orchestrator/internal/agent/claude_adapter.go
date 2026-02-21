@@ -42,8 +42,8 @@ func NewClaudeCodeAdapter(promptBuilder *PromptBuilder, providerID, baseURL, aut
 func (a *ClaudeCodeAdapter) Name() string { return "claude-code" }
 
 func (a *ClaudeCodeAdapter) BuildRequest(ctx context.Context, req *AgentRequest) (*ExecutorRequest, error) {
-	// 1. Build full prompt
-	prompt := a.promptBuilder.Build(req)
+	// 1. Build full prompt with skills
+	prompt := a.promptBuilder.Build(req, req.Skills)
 
 	// 2. Prepare environment variables
 	env := map[string]string{

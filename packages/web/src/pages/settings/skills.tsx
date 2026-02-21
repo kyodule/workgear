@@ -1,16 +1,20 @@
 import { useState, useEffect } from 'react'
-import { FileText, Trash2, ExternalLink, Download } from 'lucide-react'
+import { FileText, Trash2, Pencil, ExternalLink, Download, Plus } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Skill } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { SkillImportDialog } from '@/components/skill-import-dialog'
+import { SkillCreateDialog } from '@/components/skill-create-dialog'
+import { SkillEditDialog } from '@/components/skill-edit-dialog'
 
 export function SkillsPage() {
   const [skills, setSkills] = useState<Skill[]>([])
   const [loading, setLoading] = useState(true)
   const [showImportDialog, setShowImportDialog] = useState(false)
+  const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [editingSkill, setEditingSkill] = useState<Skill | null>(null)
 
   useEffect(() => {
     loadSkills()
@@ -58,10 +62,16 @@ export function SkillsPage() {
             管理可复用的 Prompt 定义
           </span>
         </div>
-        <Button size="sm" onClick={() => setShowImportDialog(true)}>
-          <Download className="mr-1 h-4 w-4" />
-          从 URL 导入
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setShowImportDialog(true)}>
+            <Download className="mr-1 h-4 w-4" />
+            从 URL 导入
+          </Button>
+          <Button size="sm" onClick={() => setShowCreateDialog(true)}>
+            <Plus className="mr-1 h-4 w-4" />
+            新建 Skill
+          </Button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
@@ -70,12 +80,18 @@ export function SkillsPage() {
             <FileText className="h-12 w-12 text-gray-300 mb-4" />
             <p className="text-gray-500 mb-2">暂无 Skills</p>
             <p className="text-sm text-gray-400 mb-4 max-w-md">
-              Skills 是可复用的 Prompt 定义，可以从 GitHub 或其他 URL 导入
+              Skills 是可复用的 Prompt 定义，可以手动创建或从 URL 导入
             </p>
-            <Button size="sm" onClick={() => setShowImportDialog(true)}>
-              <Download className="mr-1 h-4 w-4" />
-              从 URL 导入第一个 Skill
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setShowImportDialog(true)}>
+                <Download className="mr-1 h-4 w-4" />
+                从 URL 导入
+              </Button>
+              <Button size="sm" onClick={() => setShowCreateDialog(true)}>
+                <Plus className="mr-1 h-4 w-4" />
+                新建 Skill
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="grid gap-4">
@@ -83,6 +99,7 @@ export function SkillsPage() {
               <SkillCard
                 key={skill.id}
                 skill={skill}
+                onEdit={() => setEditingSkill(skill)}
                 onDelete={() => handleDelete(skill)}
               />
             ))}
@@ -96,16 +113,30 @@ export function SkillsPage() {
         onImported={loadSkills}
         existingSkills={skills}
       />
+
+      <SkillCreateDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        onCreated={loadSkills}
+      />
+
+      <SkillEditDialog
+        open={!!editingSkill}
+        onOpenChange={(open) => { if (!open) setEditingSkill(null) }}
+        skill={editingSkill}
+        onUpdated={loadSkills}
+      />
     </div>
   )
 }
 
 interface SkillCardProps {
   skill: Skill
+  onEdit: () => void
   onDelete: () => void
 }
 
-function SkillCard({ skill, onDelete }: SkillCardProps) {
+function SkillCard({ skill, onEdit, onDelete }: SkillCardProps) {
   const [expanded, setExpanded] = useState(false)
 
   return (
@@ -170,12 +201,21 @@ function SkillCard({ skill, onDelete }: SkillCardProps) {
           </div>
         </div>
 
-        <div className="flex gap-2 ml-4">
+        <div className="flex gap-1 ml-4">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onEdit}
+            title="编辑"
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
           <Button
             size="sm"
             variant="ghost"
             onClick={onDelete}
             className="text-red-600 hover:text-red-800 hover:bg-red-50"
+            title="删除"
           >
             <Trash2 className="h-4 w-4" />
           </Button>

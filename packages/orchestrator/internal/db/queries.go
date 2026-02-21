@@ -728,26 +728,35 @@ func (c *Client) UpdateFlowRunPR(ctx context.Context, flowRunID, branchName, prU
 // GetAgentRoleConfig retrieves agent role configuration by slug
 func (c *Client) GetAgentRoleConfig(ctx context.Context, slug string) (*AgentRoleConfig, error) {
 	row := c.pool.QueryRow(ctx, `
-		SELECT slug, agent_type, provider_id, model_id, system_prompt
+		SELECT id, slug, agent_type, provider_id, model_id, system_prompt, skill_ids
 		FROM agent_roles
 		WHERE slug = $1
 	`, slug)
 
 	var config AgentRoleConfig
-	err := row.Scan(&config.Slug, &config.AgentType, &config.ProviderID, &config.ModelID, &config.SystemPrompt)
+	var skillIDsJSON []byte
+	err := row.Scan(&config.ID, &config.Slug, &config.AgentType, &config.ProviderID, &config.ModelID, &config.SystemPrompt, &skillIDsJSON)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil // Role not found in DB, will use fallback
 		}
 		return nil, fmt.Errorf("get agent role config: %w", err)
 	}
+
+	// Parse skill_ids JSON array
+	if len(skillIDsJSON) > 0 {
+		if err := json.Unmarshal(skillIDsJSON, &config.SkillIDs); err != nil {
+			return nil, fmt.Errorf("unmarshal skill_ids: %w", err)
+		}
+	}
+
 	return &config, nil
 }
 
 // GetAllAgentRoleConfigs retrieves all agent role configurations as a map
 func (c *Client) GetAllAgentRoleConfigs(ctx context.Context) (map[string]*AgentRoleConfig, error) {
 	rows, err := c.pool.Query(ctx, `
-		SELECT slug, agent_type, provider_id, model_id, system_prompt
+		SELECT id, slug, agent_type, provider_id, model_id, system_prompt, skill_ids
 		FROM agent_roles
 		ORDER BY slug
 	`)
@@ -759,9 +768,18 @@ func (c *Client) GetAllAgentRoleConfigs(ctx context.Context) (map[string]*AgentR
 	result := make(map[string]*AgentRoleConfig)
 	for rows.Next() {
 		var config AgentRoleConfig
-		if err := rows.Scan(&config.Slug, &config.AgentType, &config.ProviderID, &config.ModelID, &config.SystemPrompt); err != nil {
+		var skillIDsJSON []byte
+		if err := rows.Scan(&config.ID, &config.Slug, &config.AgentType, &config.ProviderID, &config.ModelID, &config.SystemPrompt, &skillIDsJSON); err != nil {
 			return nil, fmt.Errorf("scan agent role config: %w", err)
 		}
+
+		// Parse skill_ids JSON array
+		if len(skillIDsJSON) > 0 {
+			if err := json.Unmarshal(skillIDsJSON, &config.SkillIDs); err != nil {
+				return nil, fmt.Errorf("unmarshal skill_ids: %w", err)
+			}
+		}
+
 		result[config.Slug] = &config
 	}
 	return result, nil
@@ -954,4 +972,34 @@ func nilIfEmpty(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// ─── Skill Queries ───
+
+// GetSkillsByIDs retrieves skills by their IDs
+func (c *Client) GetSkillsByIDs(ctx context.Context, skillIDs []string) ([]*Skill, error) {
+	if len(skillIDs) == 0 {
+		return []*Skill{}, nil
+	}
+
+	rows, err := c.pool.Query(ctx, `
+		SELECT id, name, description, prompt, source_url
+		FROM skills
+		WHERE id = ANY($1)
+		ORDER BY name
+	`, skillIDs)
+	if err != nil {
+		return nil, fmt.Errorf("get skills by ids: %w", err)
+	}
+	defer rows.Close()
+
+	var result []*Skill
+	for rows.Next() {
+		var skill Skill
+		if err := rows.Scan(&skill.ID, &skill.Name, &skill.Description, &skill.Prompt, &skill.SourceURL); err != nil {
+			return nil, fmt.Errorf("scan skill: %w", err)
+		}
+		result = append(result, &skill)
+	}
+	return result, nil
 }

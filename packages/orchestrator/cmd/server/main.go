@@ -57,6 +57,7 @@ func main() {
 	factoryRegistry.Register(&agent.ClaudeCodeFactory{PromptBuilder: promptBuilder})
 	factoryRegistry.Register(&agent.CodexFactory{PromptBuilder: promptBuilder})
 	factoryRegistry.Register(&agent.DroidFactory{PromptBuilder: promptBuilder})
+	factoryRegistry.Register(&agent.HumanFactory{PromptBuilder: promptBuilder})
 
 	// Load agent config from database
 	loadResult, err := agent.LoadConfig(ctx, sugar, dbClient, registry, factoryRegistry)
