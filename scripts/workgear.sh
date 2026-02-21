@@ -58,15 +58,7 @@ read_pid() {
 }
 
 check_port() {
-  local port=$1
-  # 尝试 3 次，每次间隔 0.5s
-  for i in 1 2 3; do
-    if lsof -i :"$port" -sTCP:LISTEN > /dev/null 2>&1; then
-      return 0
-    fi
-    [[ $i -lt 3 ]] && sleep 0.5
-  done
-  return 1
+  nc -z localhost "$1" > /dev/null 2>&1
 }
 
 wait_for_port() {
@@ -135,7 +127,7 @@ start_service() {
   port="$(get_port "$svc")"
   if check_port "$port"; then
     fail "端口 $port 已被占用，无法启动 $svc"
-    echo "    占用进程: $(lsof -i :"$port" -sTCP:LISTEN -t 2>/dev/null || echo '未知')"
+    echo "    占用进程: $(lsof -i :"$port" -t 2>/dev/null || echo '未知')"
     return 1
   fi
 
@@ -220,7 +212,7 @@ stop_service() {
   # 端口兜底清理（如果端口还被占用）
   if check_port "$port"; then
     warn "端口 $port 仍被占用，按端口清理残留进程..."
-    lsof -i :"$port" -sTCP:LISTEN -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+    lsof -i :"$port" -t 2>/dev/null | xargs kill -9 2>/dev/null || true
   fi
 
   if ! ps -p "$pid" > /dev/null 2>&1; then
