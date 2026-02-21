@@ -252,7 +252,8 @@ nodes:
     agent:
       role: "code-reviewer"
     config:
-      mode: review
+      mode: code_review
+      transient: true
       prompt_template: |
         请 Review 以下代码变更，对照 OpenSpec 的 specs 和 design 文档：
 

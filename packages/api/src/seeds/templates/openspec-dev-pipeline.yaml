@@ -162,7 +162,8 @@ nodes:
     agent:
       role: "{{params.reviewer_role}}"
     config:
-      mode: review
+      mode: code_review
+      transient: true
       prompt_template: |
         请 Review 以下代码变更，对照 OpenSpec 的 specs 和 design 文档：
 
@@ -183,8 +184,7 @@ nodes:
     config:
       review_target: "{{nodes.code_review.outputs}}"
       show_artifacts: true
-      artifact_paths:
-        - "openspec/changes/{{nodes.generate_change_name.outputs.change_name}}/"
+      artifact_scope: predecessor
       actions: ["approve", "reject"]
       timeout: 24h
     on_reject:
