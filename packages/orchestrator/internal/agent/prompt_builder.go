@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/sunshow/workgear/orchestrator/internal/db"
 )
 
 // DefaultRolePrompts provides built-in system prompts for common roles
@@ -65,8 +67,8 @@ func (b *PromptBuilder) SetRolePrompt(role, prompt string) {
 	b.rolePrompts[role] = prompt
 }
 
-// Build constructs the full prompt from role prompt + DSL template + upstream context + feedback
-func (b *PromptBuilder) Build(req *AgentRequest) string {
+// Build constructs the full prompt from role prompt + skills + DSL template + upstream context + feedback
+func (b *PromptBuilder) Build(req *AgentRequest, skills []*db.Skill) string {
 	var parts []string
 
 	// 1. Role system prompt
@@ -76,12 +78,25 @@ func (b *PromptBuilder) Build(req *AgentRequest) string {
 		parts = append(parts, rolePrompt)
 	}
 
-	// 2. DSL prompt_template
+	// 2. Skills (新增)
+	if len(skills) > 0 {
+		skillsSection := "---\n## 可用技能\n\n"
+		for _, skill := range skills {
+			skillsSection += fmt.Sprintf("### %s\n", skill.Name)
+			if skill.Description != nil && *skill.Description != "" {
+				skillsSection += fmt.Sprintf("*%s*\n\n", *skill.Description)
+			}
+			skillsSection += fmt.Sprintf("%s\n\n", skill.Prompt)
+		}
+		parts = append(parts, skillsSection)
+	}
+
+	// 3. DSL prompt_template
 	if req.Prompt != "" {
 		parts = append(parts, "---\n## 任务说明\n"+req.Prompt)
 	}
 
-	// 3. Upstream node outputs (context)
+	// 4. Upstream node outputs (context)
 	if len(req.Context) > 0 {
 		contextStr := formatContext(req.Context)
 		if contextStr != "" {
@@ -89,12 +104,12 @@ func (b *PromptBuilder) Build(req *AgentRequest) string {
 		}
 	}
 
-	// 4. Feedback from rejection
+	// 5. Feedback from rejection
 	if req.Feedback != "" {
 		parts = append(parts, "---\n## 人工反馈（请根据以下反馈修改）\n"+req.Feedback)
 	}
 
-	// 5. Mode-specific instructions
+	// 6. Mode-specific instructions
 	modeInstr := modeInstruction(req.Mode)
 	if modeInstr != "" {
 		parts = append(parts, "---\n## 输出要求\n"+modeInstr)

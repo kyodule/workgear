@@ -1,13 +1,12 @@
-import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, act } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Artifact, NodeRun } from '@/lib/types'
 
 // ─── Mocks ───
 
 // Mock api module
-const mockGet = vi.fn()
+const mockGet: any = vi.fn()
 const mockPost = vi.fn()
 const mockPut = vi.fn()
 

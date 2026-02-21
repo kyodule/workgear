@@ -6,7 +6,7 @@ import type { TimelineEvent } from '@/lib/types'
 
 // ─── Mocks ───
 
-const mockGet = vi.fn()
+const mockGet: any = vi.fn()
 
 vi.mock('@/lib/api', () => ({
   api: {

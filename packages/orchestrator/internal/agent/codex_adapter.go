@@ -39,7 +39,7 @@ func (a *CodexAdapter) Name() string { return "codex" }
 
 func (a *CodexAdapter) BuildRequest(ctx context.Context, req *AgentRequest) (*ExecutorRequest, error) {
 	// Build full prompt
-	prompt := a.promptBuilder.Build(req)
+	prompt := a.promptBuilder.Build(req, req.Skills)
 
 	// Prepare environment variables
 	env := map[string]string{

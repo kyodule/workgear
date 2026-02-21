@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Bot, Plus, Pencil, Trash2, Save, X, PlayCircle, Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { AgentRole, AgentTypeDefinition, AgentProvider, AgentModel } from '@/lib/types'
+import type { AgentRole, AgentTypeDefinition, AgentProvider, AgentModel, Skill } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -24,6 +24,7 @@ export function AgentRolesPage() {
   const [agentTypes, setAgentTypes] = useState<Record<string, AgentTypeDefinition>>({})
   const [providers, setProviders] = useState<AgentProvider[]>([])
   const [models, setModels] = useState<Record<string, AgentModel[]>>({})
+  const [skills, setSkills] = useState<Skill[]>([])
   const [loading, setLoading] = useState(true)
   const [editingRole, setEditingRole] = useState<AgentRole | null>(null)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
@@ -37,14 +38,16 @@ export function AgentRolesPage() {
   async function loadData() {
     setLoading(true)
     try {
-      const [rolesData, typesData, providersData] = await Promise.all([
+      const [rolesData, typesData, providersData, skillsData] = await Promise.all([
         api.get('agent-roles').json<AgentRole[]>(),
         api.get('agent-types').json<Record<string, AgentTypeDefinition>>(),
         api.get('agent-providers').json<AgentProvider[]>(),
+        api.get('skills').json<Skill[]>(),
       ])
       setRoles(rolesData)
       setAgentTypes(typesData)
       setProviders(providersData)
+      setSkills(skillsData)
 
       // 加载所有 Provider 的 Model
       const modelsByProvider: Record<string, AgentModel[]> = {}
@@ -82,6 +85,7 @@ export function AgentRolesPage() {
     providerId: string | null
     modelId: string | null
     systemPrompt: string
+    skillIds: string[]
   }) {
     setSaving(true)
     try {
@@ -140,6 +144,7 @@ export function AgentRolesPage() {
               agentTypes={agentTypes}
               providers={providers}
               models={models}
+              skills={skills}
               isEditing={editingRole?.id === role.id}
               onEdit={() => setEditingRole(role)}
               onCancel={() => setEditingRole(null)}
@@ -158,6 +163,7 @@ export function AgentRolesPage() {
         agentTypes={agentTypes}
         providers={providers}
         models={models}
+        skills={skills}
         onCreate={handleCreate}
         saving={saving}
       />
@@ -178,6 +184,7 @@ function RoleCard({
   agentTypes,
   providers,
   models,
+  skills,
   isEditing,
   onEdit,
   onCancel,
@@ -190,6 +197,7 @@ function RoleCard({
   agentTypes: Record<string, AgentTypeDefinition>
   providers: AgentProvider[]
   models: Record<string, AgentModel[]>
+  skills: Skill[]
   isEditing: boolean
   onEdit: () => void
   onCancel: () => void
@@ -204,6 +212,7 @@ function RoleCard({
   const [editProviderId, setEditProviderId] = useState(role.providerId || NONE_VALUE)
   const [editModelId, setEditModelId] = useState(role.modelId || NONE_VALUE)
   const [editPrompt, setEditPrompt] = useState(role.systemPrompt)
+  const [editSkillIds, setEditSkillIds] = useState<string[]>(role.skillIds || [])
 
   useEffect(() => {
     if (isEditing) {
@@ -213,6 +222,7 @@ function RoleCard({
       setEditProviderId(role.providerId || NONE_VALUE)
       setEditModelId(role.modelId || NONE_VALUE)
       setEditPrompt(role.systemPrompt)
+      setEditSkillIds(role.skillIds || [])
     }
   }, [isEditing, role])
 
@@ -323,6 +333,38 @@ function RoleCard({
           />
         </div>
 
+        <div>
+          <Label>关联 Skills</Label>
+          <div className="mt-2 space-y-2 max-h-[200px] overflow-y-auto border rounded-md p-3">
+            {skills.length === 0 ? (
+              <p className="text-sm text-muted-foreground">暂无可用 Skill</p>
+            ) : (
+              skills.map((skill) => (
+                <label key={skill.id} className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editSkillIds.includes(skill.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setEditSkillIds([...editSkillIds, skill.id])
+                      } else {
+                        setEditSkillIds(editSkillIds.filter((id) => id !== skill.id))
+                      }
+                    }}
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">{skill.name}</div>
+                    {skill.description && (
+                      <div className="text-xs text-muted-foreground">{skill.description}</div>
+                    )}
+                  </div>
+                </label>
+              ))
+            )}
+          </div>
+        </div>
+
         <div className="flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onCancel} disabled={saving}>
             <X className="mr-1 h-3 w-3" />
@@ -339,6 +381,7 @@ function RoleCard({
                 providerId: editProviderId === NONE_VALUE ? null : editProviderId,
                 modelId: editModelId === NONE_VALUE ? null : editModelId,
                 systemPrompt: editPrompt,
+                skillIds: editSkillIds,
               })
             }
           >
@@ -349,6 +392,8 @@ function RoleCard({
       </Card>
     )
   }
+
+  const selectedSkills = skills.filter((s) => role.skillIds?.includes(s.id))
 
   return (
     <Card className="flex items-start justify-between p-5">
@@ -370,6 +415,15 @@ function RoleCard({
           <span>Provider: {role.providerName || '默认'}</span>
           <span>Model: {role.modelName || '默认'}</span>
         </div>
+        {selectedSkills.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {selectedSkills.map((skill) => (
+              <Badge key={skill.id} variant="secondary" className="text-xs">
+                {skill.name}
+              </Badge>
+            ))}
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-1">
         <Button variant="ghost" size="sm" onClick={onTest} title="测试">
@@ -394,6 +448,7 @@ function CreateRoleDialog({
   agentTypes,
   providers,
   models,
+  skills,
   onCreate,
   saving,
 }: {
@@ -402,6 +457,7 @@ function CreateRoleDialog({
   agentTypes: Record<string, AgentTypeDefinition>
   providers: AgentProvider[]
   models: Record<string, AgentModel[]>
+  skills: Skill[]
   onCreate: (data: {
     slug: string
     name: string
@@ -410,6 +466,7 @@ function CreateRoleDialog({
     providerId: string | null
     modelId: string | null
     systemPrompt: string
+    skillIds: string[]
   }) => void
   saving: boolean
 }) {
@@ -420,6 +477,7 @@ function CreateRoleDialog({
   const [providerId, setProviderId] = useState(NONE_VALUE)
   const [modelId, setModelId] = useState(NONE_VALUE)
   const [prompt, setPrompt] = useState('')
+  const [skillIds, setSkillIds] = useState<string[]>([])
 
   const filteredProviders = providers.filter((p) => p.agentType === agentType)
   const filteredModels = providerId !== NONE_VALUE ? (models[providerId] || []) : []
@@ -433,6 +491,7 @@ function CreateRoleDialog({
       setProviderId(NONE_VALUE)
       setModelId(NONE_VALUE)
       setPrompt('')
+      setSkillIds([])
     }
     onOpenChange(open)
   }
@@ -462,6 +521,7 @@ function CreateRoleDialog({
                 providerId: providerId === NONE_VALUE ? null : providerId,
                 modelId: modelId === NONE_VALUE ? null : modelId,
                 systemPrompt: prompt,
+                skillIds,
               })
             }
           >
@@ -560,6 +620,38 @@ function CreateRoleDialog({
             className="mt-1 min-h-[120px] font-mono text-sm"
             placeholder="你是一个..."
           />
+        </div>
+
+        <div>
+          <Label>关联 Skills</Label>
+          <div className="mt-2 space-y-2 max-h-[200px] overflow-y-auto border rounded-md p-3">
+            {skills.length === 0 ? (
+              <p className="text-sm text-muted-foreground">暂无可用 Skill</p>
+            ) : (
+              skills.map((skill) => (
+                <label key={skill.id} className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={skillIds.includes(skill.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSkillIds([...skillIds, skill.id])
+                      } else {
+                        setSkillIds(skillIds.filter((id) => id !== skill.id))
+                      }
+                    }}
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">{skill.name}</div>
+                    {skill.description && (
+                      <div className="text-xs text-muted-foreground">{skill.description}</div>
+                    )}
+                  </div>
+                </label>
+              ))
+            )}
+          </div>
         </div>
       </div>
     </DraggableResizableDialog>

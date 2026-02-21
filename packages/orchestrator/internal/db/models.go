@@ -92,9 +92,20 @@ type AgentModel struct {
 
 // AgentRoleConfig holds agent role configuration from database
 type AgentRoleConfig struct {
-	Slug       string
-	AgentType  string
-	ProviderID *string // nil = use default provider for agent_type
-	ModelID    *string // nil = use default model for provider
+	ID           string
+	Slug         string
+	AgentType    string
+	ProviderID   *string // nil = use default provider for agent_type
+	ModelID      *string // nil = use default model for provider
 	SystemPrompt string
+	SkillIDs     []string // Associated skill IDs
+}
+
+// Skill holds skill definition from database
+type Skill struct {
+	ID          string
+	Name        string
+	Description *string
+	Prompt      string
+	SourceURL   *string
 }
