@@ -120,7 +120,7 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 	}
 
 	// ─── Git repo cache: prepare worktree ───
-	var worktreePath, depsPath, baseSHA string
+	var worktreePath, bareRepoPath, depsPath, baseSHA string
 	var integrationRef, integrationHeadSHA string
 	useRepoCache := e.repoManager != nil && gitRepoURL != "" && flowRun.ProjectID != nil && *flowRun.ProjectID != ""
 
@@ -129,10 +129,12 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 		projectID = *flowRun.ProjectID
 
 		// 1. Ensure bare repo exists and is up-to-date
-		if _, err := e.repoManager.EnsureBareRepo(ctx, projectID, gitRepoURL, gitAccessToken); err != nil {
+		if barePath, err := e.repoManager.EnsureBareRepo(ctx, projectID, gitRepoURL, gitAccessToken); err != nil {
 			e.logger.Warnw("EnsureBareRepo failed, falling back to clone mode",
 				"error", err, "project_id", projectID)
 			useRepoCache = false
+		} else {
+			bareRepoPath = barePath
 		}
 
 		if useRepoCache {
@@ -203,6 +205,14 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 		}
 	}
 
+	e.logger.Infow("DEBUG: timeout resolution",
+		"node_id", nodeRun.NodeID,
+		"nodeDef.Timeout", nodeDef.Timeout,
+		"config.Timeout", func() string { if nodeDef.Config != nil { return nodeDef.Config.Timeout }; return "" }(),
+		"timeoutStr", timeoutStr,
+		"resolved_timeout", timeout.String(),
+	)
+
 	agentReq := &agent.AgentRequest{
 		TaskID:          nodeRun.ID,
 		FlowRunID:       nodeRun.FlowRunID,
@@ -225,6 +235,7 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 		Timeout:         timeout,
 		Skills:          skills,
 		WorktreePath:    worktreePath,
+		BareRepoPath:    bareRepoPath,
 		DepsPath:        depsPath,
 	}
 
@@ -404,6 +415,33 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 		}
 	}
 
+	// 5c. Spec mode: write artifact content to git as a markdown file
+	if mode == "spec" && useRepoCache && worktreePath != "" && nodeDef.Config != nil && nodeDef.Config.Artifact != nil && nodeDef.Config.Artifact.FilePath != "" {
+		filePath := nodeDef.Config.Artifact.FilePath
+		if rendered, err := RenderTemplate(filePath, runtimeCtx); err == nil && rendered != "" {
+			filePath = rendered
+		}
+		content := extractArtifactContent(nodeDef.Config.Artifact.Type, resp.Output)
+		if content != "" {
+			commitSHA, err := writeArtifactToGit(ctx, worktreePath, filePath, content, nodeDef.Config.Artifact.Type)
+			if err != nil {
+				e.logger.Warnw("Failed to write spec artifact to git", "error", err, "file_path", filePath)
+			} else {
+				e.logger.Infow("Wrote spec artifact to git", "file_path", filePath, "commit", commitSHA)
+				if resp.GitMetadata == nil {
+					resp.GitMetadata = &agent.GitMetadata{}
+				}
+				resp.GitMetadata.Commit = commitSHA
+				resp.GitMetadata.CommitMessage = fmt.Sprintf("docs: add %s", filePath)
+				resp.GitMetadata.ChangedFiles = append(resp.GitMetadata.ChangedFiles, filePath)
+				resp.GitMetadata.ChangedFilesDetail = append(resp.GitMetadata.ChangedFilesDetail, agent.ChangedFileDetail{
+					Path:   filePath,
+					Status: "added",
+				})
+			}
+		}
+	}
+
 	// 6. Update Git info on task (if agent performed git operations)
 	// Must run before artifact creation so fetchFileFromGit can read the branch from DB
 	if resp.GitMetadata != nil && resp.GitMetadata.Branch != "" {
@@ -416,7 +454,7 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 	// 6a. Git repo cache: integrate node commit into flow integration ref
 	if useRepoCache {
 		// Only modes that produce code changes may need commit integration
-		requiresCommit := mode == "execute" || mode == "opsx_plan" || mode == "opsx_apply"
+		requiresCommit := mode == "execute" || mode == "opsx_plan" || mode == "opsx_apply" || mode == "spec"
 
 		hasCommit := resp.GitMetadata != nil && resp.GitMetadata.Commit != ""
 
@@ -606,6 +644,20 @@ func (e *FlowExecutor) executeHumanInput(ctx context.Context, nodeRun *db.NodeRu
 		formFields = nodeDef.Config.Form
 	}
 
+	// Persist form definition to node_runs.input so frontend can read it after page refresh
+	// (WebSocket events are ephemeral; input column is the persistent source of truth)
+	if len(formFields) > 0 {
+		inputData := map[string]any{
+			"form":       formFields,
+			"input_type": "human_input",
+		}
+		inputJSON, _ := json.Marshal(inputData)
+		inputStr := string(inputJSON)
+		if err := e.db.UpdateNodeRunInput(ctx, nodeRun.ID, &inputStr); err != nil {
+			e.logger.Warnw("Failed to persist form definition to node input", "error", err)
+		}
+	}
+
 	// Publish waiting_human event with form definition
 	e.publishEvent(nodeRun.FlowRunID, nodeRun.ID, nodeRun.NodeID, "node.waiting_human", map[string]any{
 		"node_name": ptrStr(nodeRun.NodeName),
@@ -768,6 +820,52 @@ func (e *FlowExecutor) handleArtifact(ctx context.Context, flowRun *db.FlowRun, 
 	})
 
 	return nil
+}
+
+// writeArtifactToGit writes artifact content as a file in the worktree, commits it, and returns the commit SHA
+func writeArtifactToGit(ctx context.Context, worktreePath, filePath, content, artifactType string) (string, error) {
+	absPath := filepath.Join(worktreePath, filePath)
+
+	// Ensure parent directory exists
+	if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
+		return "", fmt.Errorf("mkdir: %w", err)
+	}
+
+	// Write file
+	if err := os.WriteFile(absPath, []byte(content), 0644); err != nil {
+		return "", fmt.Errorf("write file: %w", err)
+	}
+
+	// Git add
+	cmd := exec.CommandContext(ctx, "git", "add", filePath)
+	cmd.Dir = worktreePath
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git add: %s: %w", string(out), err)
+	}
+
+	// Git commit
+	msg := fmt.Sprintf("docs: add %s (%s)", filePath, artifactType)
+	cmd = exec.CommandContext(ctx, "git", "commit", "-m", msg)
+	cmd.Dir = worktreePath
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=WorkGear Agent",
+		"GIT_AUTHOR_EMAIL=agent@workgear.dev",
+		"GIT_COMMITTER_NAME=WorkGear Agent",
+		"GIT_COMMITTER_EMAIL=agent@workgear.dev",
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git commit: %s: %w", string(out), err)
+	}
+
+	// Get commit SHA
+	cmd = exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
+	cmd.Dir = worktreePath
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse: %w", err)
+	}
+
+	return strings.TrimSpace(string(out)), nil
 }
 
 // extractArtifactContent extracts the relevant content string from agent output

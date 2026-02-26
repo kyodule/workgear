@@ -149,6 +149,7 @@ func (a *CodexAdapter) BuildRequest(ctx context.Context, req *AgentRequest) (*Ex
 		WorkDir:      "/workspace",
 		Timeout:      timeout,
 		WorktreePath: req.WorktreePath,
+		BareRepoPath: req.BareRepoPath,
 		DepsPath:     req.DepsPath,
 	}, nil
 }

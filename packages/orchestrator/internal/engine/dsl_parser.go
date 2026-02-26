@@ -75,6 +75,7 @@ type FallbackConfigDef struct {
 type ArtifactConfigDef struct {
 	Type        string `yaml:"type"`         // prd / spec / plan / code / review_report / etc.
 	Title       string `yaml:"title"`        // Template expression for artifact title
+	FilePath    string `yaml:"file_path"`    // Template expression for file path in git repo (e.g. "docs/prd.md")
 	DerivedFrom string `yaml:"derived_from"` // Template expression for parent artifact ID
 }
 

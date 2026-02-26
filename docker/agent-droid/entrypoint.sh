@@ -196,11 +196,8 @@ fi
 
 # Map AGENT_MODE to ACP mode ID
 case "$AGENT_MODE" in
-    spec)       ACP_MODE="normal" ;;
     review)     ACP_MODE="auto-low" ;;
     test)       ACP_MODE="auto-low" ;;
-    execute|opsx_plan|opsx_apply)
-                ACP_MODE="auto-high" ;;
     *)          ACP_MODE="auto-high" ;;
 esac
 log_info "ACP mode: $ACP_MODE"
