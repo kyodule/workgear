@@ -63,6 +63,15 @@ type NodeConfigDef struct {
 	AgentPool              interface{}       `yaml:"agent_pool"` // []AgentPoolItem or template expression
 	DispatchPromptTemplate string            `yaml:"dispatch_prompt_template"`
 	Fallback               *FallbackConfigDef `yaml:"fallback"`
+	// Git configuration for agent_task nodes
+	Git                    *GitConfigDef     `yaml:"git"`
+}
+
+// GitConfigDef defines git branch/PR configuration for agent_task nodes
+type GitConfigDef struct {
+	CreateBranch  bool   `yaml:"create_branch" json:"create_branch"`
+	BranchPattern string `yaml:"branch_pattern" json:"branch_pattern"`
+	AutoCommit    bool   `yaml:"auto_commit" json:"auto_commit"`
 }
 
 // FallbackConfigDef defines fallback strategy for agent_dispatch
@@ -89,11 +98,11 @@ type OpsxConfigDef struct {
 
 // FormFieldDef defines a form field for human_input nodes
 type FormFieldDef struct {
-	Field    string   `yaml:"field"`
-	Type     string   `yaml:"type"`
-	Label    string   `yaml:"label"`
-	Required bool     `yaml:"required"`
-	Options  []string `yaml:"options"`
+	Field    string   `yaml:"field" json:"field"`
+	Type     string   `yaml:"type" json:"type"`
+	Label    string   `yaml:"label" json:"label"`
+	Required bool     `yaml:"required" json:"required"`
+	Options  []string `yaml:"options" json:"options,omitempty"`
 }
 
 // OnRejectDef defines reject behavior

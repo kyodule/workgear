@@ -139,6 +139,13 @@ func (e *DockerExecutor) Execute(ctx context.Context, req *ExecutorRequest) (*Ex
 
 	// Build volume mounts
 	var binds []string
+
+	// Mount prompt file (avoids ARG_MAX limit for large prompts)
+	if req.PromptFilePath != "" {
+		binds = append(binds, req.PromptFilePath+":/tmp/agent_prompt.txt:ro")
+		e.logger.Debugw("Mounting prompt file", "host_path", req.PromptFilePath)
+	}
+
 	if req.WorktreePath != "" {
 		binds = append(binds, req.WorktreePath+":/workspace:rw")
 		e.logger.Debugw("Mounting worktree volume", "host_path", req.WorktreePath)
@@ -173,6 +180,13 @@ func (e *DockerExecutor) Execute(ctx context.Context, req *ExecutorRequest) (*Ex
 
 	// Ensure cleanup
 	defer func() {
+		// Clean up prompt temp file
+		if req.PromptFilePath != "" {
+			if err := os.Remove(req.PromptFilePath); err != nil {
+				e.logger.Debugw("Failed to remove prompt temp file", "path", req.PromptFilePath, "error", err)
+			}
+		}
+
 		// Restore worktree .git paths back to host paths (so host-side git operations still work)
 		if req.WorktreePath != "" && req.BareRepoPath != "" {
 			if err := e.rewriteWorktreeGitPaths(req.WorktreePath, "/repo.git", req.BareRepoPath); err != nil {

@@ -76,7 +76,15 @@ func (e *FlowExecutor) Start(ctx context.Context) error {
 		e.logger.Infow("Recovered stale running nodes", "count", count)
 	}
 
-	// 2. Start worker loop
+	// 2. Cancel flow_runs stuck in 'running' for over 2 hours with no active nodes
+	staleFlows, err := e.db.CancelStaleFlowRuns(ctx, 2*time.Hour)
+	if err != nil {
+		e.logger.Warnw("Failed to cancel stale flow_runs", "error", err)
+	} else if staleFlows > 0 {
+		e.logger.Infow("Cancelled stale flow_runs", "count", staleFlows)
+	}
+
+	// 3. Start worker loop
 	e.logger.Infow("Starting worker loop", "worker_id", e.workerID, "max_concurrency", e.maxConcurrency)
 	go e.runWorkerLoop(ctx)
 

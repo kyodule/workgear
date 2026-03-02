@@ -121,6 +121,9 @@ nodes:
     config:
       mode: opsx_plan
       timeout: 30m
+      git:
+        create_branch: true
+        branch_pattern: "feat/{{nodes.generate_change_name.outputs.change_name}}"
       opsx:
         change_name: "{{nodes.generate_change_name.outputs.change_name}}"
         schema: "{{params.spec_schema}}"
@@ -292,6 +295,9 @@ nodes:
     config:
       mode: opsx_plan
       timeout: 10m
+      git:
+        create_branch: true
+        branch_pattern: "feat/{{nodes.generate_change_name.outputs.change_name}}"
       opsx:
         change_name: "{{nodes.generate_change_name.outputs.change_name}}"
         action: archive

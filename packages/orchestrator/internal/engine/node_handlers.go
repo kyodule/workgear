@@ -255,6 +255,14 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 		}
 	}
 
+	// Resolve git.branch_pattern from DSL (overrides default branch naming)
+	if nodeDef.Config != nil && nodeDef.Config.Git != nil && nodeDef.Config.Git.BranchPattern != "" {
+		if rendered, err := RenderTemplate(nodeDef.Config.Git.BranchPattern, runtimeCtx); err == nil && rendered != "" {
+			agentReq.GitBranch = rendered
+			e.logger.Infow("Resolved git branch from DSL", "branch_pattern", nodeDef.Config.Git.BranchPattern, "resolved", rendered)
+		}
+	}
+
 	// 5. Execute
 	e.logger.Infow("Executing agent task",
 		"node_id", nodeRun.NodeID,
@@ -530,6 +538,20 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 		if validationErr := e.validateOpsxApplyResult(resp); validationErr != nil {
 			e.logger.Warnw("opsx_apply validation failed", "error", validationErr, "node_id", nodeRun.NodeID)
 			return fmt.Errorf("opsx_apply validation failed: %w", validationErr)
+		}
+	}
+
+	// 6d-2. Validate opsx_plan result (detect incomplete spec generation)
+	if mode == "opsx_plan" {
+		changeName := ""
+		opsxAction := ""
+		if agentReq.OpsxConfig != nil {
+			changeName = agentReq.OpsxConfig.ChangeName
+			opsxAction = agentReq.OpsxConfig.Action
+		}
+		if validationErr := e.validateOpsxPlanResult(resp, changeName, opsxAction); validationErr != nil {
+			e.logger.Warnw("opsx_plan validation failed", "error", validationErr, "node_id", nodeRun.NodeID)
+			return fmt.Errorf("opsx_plan validation failed: %w", validationErr)
 		}
 	}
 
@@ -1269,6 +1291,69 @@ func (e *FlowExecutor) validateOpsxApplyResult(resp *agent.AgentResponse) error 
 	}
 	if codeFileCount == 0 {
 		return fmt.Errorf("only package manager files were modified, no actual code implementation detected")
+	}
+
+	return nil
+}
+
+// validateOpsxPlanResult validates that opsx_plan mode produced the expected spec artifacts.
+// Required files: proposal.md, design.md, tasks.md, and at least one spec under specs/.
+// The archive action is exempt from validation.
+func (e *FlowExecutor) validateOpsxPlanResult(resp *agent.AgentResponse, changeName, opsxAction string) error {
+	// Archive action doesn't need spec file validation
+	if opsxAction == "archive" {
+		return nil
+	}
+
+	// 1. Must have Git changes
+	if resp.GitMetadata == nil || len(resp.GitMetadata.ChangedFiles) == 0 {
+		return fmt.Errorf("no spec files generated, agent may have terminated prematurely")
+	}
+
+	// 2. Check for required OpenSpec artifacts in changed files
+	changeDir := "openspec/changes/"
+	if changeName != "" {
+		changeDir = "openspec/changes/" + changeName + "/"
+	}
+
+	hasProposal := false
+	hasDesign := false
+	hasTasks := false
+	hasSpec := false
+
+	for _, f := range resp.GitMetadata.ChangedFiles {
+		if !strings.HasPrefix(f, changeDir) && !strings.HasPrefix(f, "openspec/") {
+			continue
+		}
+		lower := strings.ToLower(f)
+		switch {
+		case strings.HasSuffix(lower, "/proposal.md"):
+			hasProposal = true
+		case strings.HasSuffix(lower, "/design.md"):
+			hasDesign = true
+		case strings.HasSuffix(lower, "/tasks.md"):
+			hasTasks = true
+		case strings.Contains(lower, "/specs/"):
+			hasSpec = true
+		}
+	}
+
+	var missing []string
+	if !hasProposal {
+		missing = append(missing, "proposal.md")
+	}
+	if !hasDesign {
+		missing = append(missing, "design.md")
+	}
+	if !hasTasks {
+		missing = append(missing, "tasks.md")
+	}
+	if !hasSpec {
+		missing = append(missing, "specs/*.md")
+	}
+
+	if len(missing) > 0 {
+		return fmt.Errorf("incomplete spec generation, missing required artifacts: %s", strings.Join(missing, ", "))
 	}
 
 	return nil

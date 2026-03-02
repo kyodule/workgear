@@ -599,6 +599,48 @@ func (c *Client) ResetStaleRunningNodes(ctx context.Context) (int, error) {
 	return int(result.RowsAffected()), nil
 }
 
+// CancelStaleFlowRuns cancels flow_runs stuck in 'running' status with no progress
+// for longer than the given threshold. Also cancels their non-terminal node_runs.
+func (c *Client) CancelStaleFlowRuns(ctx context.Context, staleThreshold time.Duration) (int, error) {
+	cutoff := time.Now().UTC().Add(-staleThreshold)
+
+	// Cancel stale flow_runs
+	result, err := c.pool.Exec(ctx, `
+		UPDATE flow_runs
+		SET status = 'cancelled', error = 'auto-cancelled: stale running flow', completed_at = NOW()
+		WHERE status = 'running'
+		  AND started_at < $1
+		  AND NOT EXISTS (
+		    SELECT 1 FROM node_runs
+		    WHERE node_runs.flow_run_id = flow_runs.id
+		      AND node_runs.status = 'running'
+		      AND node_runs.locked_at > $1
+		  )
+	`, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("cancel stale flow_runs: %w", err)
+	}
+	flowCount := int(result.RowsAffected())
+
+	if flowCount > 0 {
+		// Cancel non-terminal node_runs belonging to cancelled flow_runs
+		_, err = c.pool.Exec(ctx, `
+			UPDATE node_runs
+			SET status = 'cancelled', completed_at = NOW(), locked_by = NULL
+			WHERE flow_run_id IN (
+				SELECT id FROM flow_runs
+				WHERE status = 'cancelled' AND error = 'auto-cancelled: stale running flow'
+			)
+			AND status NOT IN ('completed', 'cancelled', 'failed')
+		`)
+		if err != nil {
+			return flowCount, fmt.Errorf("cancel stale node_runs: %w", err)
+		}
+	}
+
+	return flowCount, nil
+}
+
 // ─── Timeline Queries ───
 
 // UpdateNodeRunInput sets the input of a node run

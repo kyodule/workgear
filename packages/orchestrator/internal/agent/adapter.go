@@ -156,6 +156,8 @@ type ExecutorRequest struct {
 	WorktreePath   string            // Host path to node worktree (mounted as /workspace:rw)
 	BareRepoPath   string            // Host path to bare repo (mounted as /repo.git:ro for worktree gitdir resolution)
 	DepsPath       string            // Host path to dependency cache (mounted as /deps:rw)
+	// Prompt file: avoids ARG_MAX limit when passing large prompts via env vars
+	PromptFilePath string            // Host path to temp file containing AGENT_PROMPT (mounted as /tmp/agent_prompt.txt:ro)
 }
 
 // ExecutorResponse is the runtime-layer response

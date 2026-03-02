@@ -264,16 +264,165 @@ artifact:
 ## 六、当前未修改文件的变更清单（未提交）
 
 ```
-docker/agent-droid/entrypoint.sh          — spec mode ACP_MODE 修复
+docker/agent-droid/entrypoint.sh          — spec mode ACP_MODE 修复 + ACP acp_wait_response 轮询重写
 packages/api/src/grpc/client.ts           — skipNode gRPC 客户端
 packages/api/src/routes/node-runs.ts      — previous-output / skip / proceed API
 packages/api/src/seeds/templates/requirement-analysis.yaml — 简化表单 + file_path
-packages/orchestrator/internal/agent/*    — BareRepoPath + Docker 挂载
+packages/api/src/seeds/templates/openspec-dev-pipeline-v2.yaml — 统一 git.branch_pattern
+packages/orchestrator/internal/agent/*    — BareRepoPath + Docker 挂载 + git branch 逻辑修复
 packages/orchestrator/internal/db/queries.go — 复用相关查询
 packages/orchestrator/internal/engine/dag.go — HandleSkipNode + 级联复用 + git 写入
-packages/orchestrator/internal/engine/dsl_parser.go — FilePath 字段
-packages/orchestrator/internal/engine/node_handlers.go — spec 模式 git 写入
+packages/orchestrator/internal/engine/dsl_parser.go — FilePath 字段 + FormFieldDef json tag + GitConfigDef
+packages/orchestrator/internal/engine/node_handlers.go — spec 模式 git 写入 + opsx_plan 验证 + branch_pattern 渲染
 packages/orchestrator/internal/grpc/*     — SkipNode RPC
 packages/shared/proto/orchestrator.proto  — SkipNode 定义
 packages/web/src/pages/kanban/task-detail/flow-tab.tsx — 复用 UI
 ```
+
+---
+
+### 10. Human Input 表单字段名全部变成 undefined
+
+**现象**：前端 human_input 表单渲染出两个输入框，但提交后数据库中 output 为 `{"undefined": "..."}`，下游模板 `{{nodes.submit_requirement.outputs.requirement_text}}` 解析为空，Agent 收到空需求回复 "Process request is quite vague"。
+
+**根因**：Go 的 `FormFieldDef` 结构体只有 `yaml` tag，没有 `json` tag。JSON 序列化时使用 Go 默认的大写字段名（`Field`, `Type`, `Label`, `Required`, `Options`），而前端读取的是小写（`field`, `type`, `label`, `required`, `options`）。前端能拿到 form 数组（length > 0），但每个元素的 `.field` 为 JS 的 `undefined`，导致 `updateField(undefined, value)` → `{"undefined": "..."}`。
+
+**修复**：给 `FormFieldDef` 添加 `json` tag：
+
+```go
+type FormFieldDef struct {
+    Field    string   `yaml:"field" json:"field"`
+    Type     string   `yaml:"type" json:"type"`
+    Label    string   `yaml:"label" json:"label"`
+    Required bool     `yaml:"required" json:"required"`
+    Options  []string `yaml:"options" json:"options,omitempty"`
+}
+```
+
+**涉及文件**：
+- `packages/orchestrator/internal/engine/dsl_parser.go`
+
+---
+
+### 11. ACP acp_wait_response 卡住导致 Agent 容器长时间无响应
+
+**现象**：Agent 容器启动后长时间（10 分钟+）无进展，或 Agent 刚开始工具调用（创建文件）就被判定为完成，产出不完整。
+
+**根因**：`entrypoint.sh` 中 `acp_wait_response` 函数的 `read -r -t $timeout_sec` 在 Droid 回复完毕后不再输出任何数据时会阻塞到超时（默认 600 秒）。Droid 通过 ACP 协议回复后会等待下一个 prompt，不会自动退出，所以 FIFO 上 `read` 一直阻塞。
+
+**修复历程**（两次迭代）：
+
+第一次修复（有缺陷）：收到 Agent 输出后将 read 超时从 600 秒降到 30 秒 → 但工具调用（创建文件、LLM 推理）间隔容易超过 30 秒，导致 Agent 还在工作就被判定完成。
+
+最终修复：改为 5 秒轮询 + 进程存活检测：
+- `read -t 5` 每 5 秒轮询一次，每次检查 Droid 进程是否还活着
+- 总超时仍然是调用方传入的值（600 秒），通过递减计数器控制
+- 只有在 Droid 进程退出或总超时到期时才退出循环
+- Droid 进程退出后，如果已有输出则视为成功（正常完成），否则视为失败
+
+**涉及文件**：
+- `docker/agent-droid/entrypoint.sh`
+
+**注意**：修改后需要重建 Docker 镜像。
+
+---
+
+### 12. opsx_plan 模式（生成 Spec）产出不完整但被标记为成功
+
+**现象**：`generate_spec` 节点的 Agent 只输出了思考过程（"I'll generate all the artifacts in parallel:"），实际 spec 文件（proposal.md / design.md / tasks.md / specs/）没有创建，但节点状态为 `completed`。后续 `review_spec` 审核节点没有实际产物可审，人工直接通过后流程继续走下去。
+
+**根因**：流程引擎只对 `opsx_apply` 模式有 `validateOpsxApplyResult` 验证（检查是否有代码变更），对 `opsx_plan` 模式没有任何验证，空结果也能标记成功。
+
+**修复**：新增 `validateOpsxPlanResult` 验证函数，在 `opsx_plan` 完成后检查 Git 产物：
+- 必须有 Git 变更（否则说明 Agent 提前终止）
+- 必须包含 4 类必要文件：`proposal.md`、`design.md`、`tasks.md`、`specs/*.md`
+- 缺少任何一个都返回错误，节点标记为 failed
+- `archive` action 豁免验证（归档操作不产生新 spec 文件）
+
+**涉及文件**：
+- `packages/orchestrator/internal/engine/node_handlers.go`
+
+---
+
+### 13. DSL git.branch_pattern 配置未生效，分支名不一致
+
+**现象**：DSL 中 `implement_code` 节点配置了 `git.branch_pattern: "feat/{{nodes.generate_change_name.outputs.change_name}}"`，但实际推送到的分支是 `agent/<change_name>`。
+
+**根因**：orchestrator 代码中完全没有解析 DSL 的 `git:` 配置块（`branch_pattern`、`create_branch`），属于死代码。分支名由 `droid_adapter.go` 中的硬编码逻辑决定：有 `OpsxConfig.ChangeName` 时使用 `agent/` 前缀。
+
+**修复**：
+
+1. `dsl_parser.go` — 新增 `GitConfigDef` 结构体，解析 DSL 中的 `git:` 配置
+2. `node_handlers.go` — 在构建 `agentReq` 后渲染 `branch_pattern` 模板，将结果写入 `agentReq.GitBranch`
+3. `droid_adapter.go` / `claude_adapter.go` / `codex_adapter.go` — 三个 adapter 统一修复：
+   - 当 `req.GitBranch` 已是具体 feature 分支名（非 main/master）时，直接用作 `GIT_FEATURE_BRANCH`
+   - `GIT_BASE_BRANCH` 始终回退为 `main`
+   - 没配 `git.branch_pattern` 时保持原有 fallback（`agent/` + changeName）
+4. `openspec-dev-pipeline-v2.yaml` — 给 `generate_spec` 和 `archive_spec` 也加上 `git.branch_pattern`，与 `implement_code` 统一为 `feat/{{change_name}}`，确保整个流程中所有 git 节点推到同一个分支
+
+**涉及文件**：
+- `packages/orchestrator/internal/engine/dsl_parser.go`
+- `packages/orchestrator/internal/engine/node_handlers.go`
+- `packages/orchestrator/internal/agent/droid_adapter.go`
+- `packages/orchestrator/internal/agent/claude_adapter.go`
+- `packages/orchestrator/internal/agent/codex_adapter.go`
+- `packages/api/src/seeds/templates/openspec-dev-pipeline-v2.yaml`
+
+---
+
+## 七、Git 分支策略说明
+
+### 流程中的 Git 操作
+
+整个 openspec-dev-pipeline-v2 流程中，只有 3 个节点会做 Git 推送操作：
+
+| 节点 | 模式 | Git 操作 |
+|------|------|---------|
+| `generate_spec` | opsx_plan | 生成 spec 文件，推送到 `feat/<change_name>` 分支，创建 PR |
+| `implement_code` | opsx_apply | 实现代码，推送到同一个 `feat/<change_name>` 分支，PR 自动更新 |
+| `archive_spec` | opsx_plan | 归档 spec，推送到同一个 `feat/<change_name>` 分支，PR 自动更新 |
+
+其他节点（理解需求、确认需求、生成变更名称、代码审核、人工审核）不涉及 Git 操作。
+
+### 分支流转
+
+```
+GitHub 仓库 main 分支
+    │
+    │  clone main（只读，拉代码用）
+    ▼
+generate_spec:
+  - 从 main clone
+  - 本地创建 feat/<change_name> 分支
+  - 生成 spec 文件
+  - git push feat/<change_name>
+  - 自动创建 PR: feat/<change_name> → main
+    │
+    │  人工审核 Spec
+    ▼
+implement_code:
+  - 从 main clone
+  - checkout 到同一个 feat/<change_name> 分支
+  - 实现代码
+  - git push --force feat/<change_name>
+  - PR 已存在，内容自动更新
+    │
+    │  Agent 代码审核 + 人工最终审核
+    ▼
+archive_spec:
+  - 归档 spec 到 archive 目录
+  - git push --force feat/<change_name>
+  - PR 内容最终更新
+    │
+    ▼
+流程结束 → GitHub 上有一个完整的 PR 等待合并
+            feat/<change_name> → main
+            包含：spec 文件 + 实现代码 + 归档操作
+            需要人工在 GitHub 上点 Merge
+```
+
+### 关键要点
+
+- **永远不会直接推送到 main 分支**，所有推送走 feature 分支 + PR
+- **合并到 main 是手动操作**，WorkGear 不自动合并
+- **空白新项目**：GitHub 仓库至少需要有一个初始 commit（创建仓库时勾选 "Add a README file"），否则 `git clone --branch main` 会失败
