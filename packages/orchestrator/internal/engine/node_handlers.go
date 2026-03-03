@@ -402,6 +402,38 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 		return fmt.Errorf("agent execution failed: %w", err)
 	}
 
+	// 5a-1b. Check for agent-level error in output (e.g. ACP "Internal error: Agent error")
+	if resp.Output != nil {
+		if errMsg, ok := resp.Output["error"].(string); ok && errMsg != "" {
+			if len(logEvents) > 0 {
+				if dbErr := e.db.UpdateNodeRunLogStream(ctx, nodeRun.ID, logEvents); dbErr != nil {
+					e.logger.Warnw("Failed to save log stream on agent error", "error", dbErr)
+				}
+			}
+			stderrInfo := ""
+			if s, ok := resp.Output["stderr"].(string); ok && s != "" {
+				stderrInfo = s
+				if len(stderrInfo) > 500 {
+					stderrInfo = stderrInfo[len(stderrInfo)-500:]
+				}
+			}
+			droidStderr := ""
+			if s, ok := resp.Output["droid_stderr"].(string); ok && s != "" {
+				droidStderr = s
+				if len(droidStderr) > 1000 {
+					droidStderr = droidStderr[len(droidStderr)-1000:]
+				}
+			}
+			e.logger.Warnw("Agent returned error in output",
+				"error", errMsg,
+				"stderr_tail", stderrInfo,
+				"droid_stderr", droidStderr,
+				"node_id", nodeRun.NodeID,
+			)
+			return fmt.Errorf("agent returned error: %s (droid_stderr: %s)", errMsg, droidStderr)
+		}
+	}
+
 	// 5a-2. Persist log stream to database
 	if len(logEvents) > 0 {
 		if dbErr := e.db.UpdateNodeRunLogStream(ctx, nodeRun.ID, logEvents); dbErr != nil {
@@ -429,7 +461,67 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 		if rendered, err := RenderTemplate(filePath, runtimeCtx); err == nil && rendered != "" {
 			filePath = rendered
 		}
-		content := extractArtifactContent(nodeDef.Config.Artifact.Type, resp.Output)
+
+		// Check if agent has meaningful result in output
+		resultStr, _ := resp.Output["result"].(string)
+		hasRealResult := len(strings.TrimSpace(resultStr)) > 100
+
+		// If no meaningful result, try to read file that agent may have written via Create tool
+		if !hasRealResult {
+			absPath := filepath.Join(worktreePath, filePath)
+			if fileBytes, err := os.ReadFile(absPath); err == nil && len(fileBytes) > 100 {
+				resultStr = string(fileBytes)
+				hasRealResult = true
+				e.logger.Infow("Recovered spec artifact from worktree file (exact path)", "file_path", filePath, "size", len(resultStr))
+			}
+		}
+
+		// Wider fallback: scan git diff for new/modified markdown files
+		if !hasRealResult {
+			cmd := exec.CommandContext(ctx, "git", "diff", "--name-only", "--diff-filter=AM", "HEAD")
+			cmd.Dir = worktreePath
+			if diffOut, err := cmd.Output(); err == nil {
+				for _, f := range strings.Split(strings.TrimSpace(string(diffOut)), "\n") {
+					f = strings.TrimSpace(f)
+					if f != "" && (strings.HasSuffix(f, ".md") || strings.HasSuffix(f, ".markdown")) {
+						absPath := filepath.Join(worktreePath, f)
+						if fileBytes, err := os.ReadFile(absPath); err == nil && len(fileBytes) > 100 {
+							resultStr = string(fileBytes)
+							hasRealResult = true
+							e.logger.Infow("Recovered spec artifact from worktree diff", "file_path", f, "size", len(resultStr))
+							break
+						}
+					}
+				}
+			}
+			// Also check untracked files
+			if !hasRealResult {
+				cmd = exec.CommandContext(ctx, "git", "ls-files", "--others", "--exclude-standard")
+				cmd.Dir = worktreePath
+				if lsOut, err := cmd.Output(); err == nil {
+					for _, f := range strings.Split(strings.TrimSpace(string(lsOut)), "\n") {
+						f = strings.TrimSpace(f)
+						if f != "" && (strings.HasSuffix(f, ".md") || strings.HasSuffix(f, ".markdown")) {
+							absPath := filepath.Join(worktreePath, f)
+							if fileBytes, err := os.ReadFile(absPath); err == nil && len(fileBytes) > 100 {
+								resultStr = string(fileBytes)
+								hasRealResult = true
+								e.logger.Infow("Recovered spec artifact from untracked file", "file_path", f, "size", len(resultStr))
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Backfill result into output so downstream nodes can reference it
+		if hasRealResult {
+			resp.Output["result"] = resultStr
+			resp.Output["summary"] = resultStr
+		}
+
+		content := resultStr
 		if content != "" {
 			commitSHA, err := writeArtifactToGit(ctx, worktreePath, filePath, content, nodeDef.Config.Artifact.Type)
 			if err != nil {
@@ -485,10 +577,33 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 				e.logger.Warnw("Failed to update flow integration head", "error", dbErr)
 			}
 
-			// Resolve push branch: prefer resp metadata branch, fallback to gitBranch
-			pushBranch := gitBranch
-			if resp.GitMetadata.Branch != "" {
+			// Resolve push branch with stronger fallbacks
+			pushBranch := ""
+			if resp.GitMetadata != nil && resp.GitMetadata.Branch != "" {
 				pushBranch = resp.GitMetadata.Branch
+			} else if agentReq.GitBranch != "" {
+				pushBranch = agentReq.GitBranch
+			} else if gitBranch != "" {
+				pushBranch = gitBranch
+			}
+			if pushBranch == "" && worktreePath != "" {
+				cmd := exec.CommandContext(ctx, "git", "rev-parse", "--abbrev-ref", "HEAD")
+				cmd.Dir = worktreePath
+				if branchBytes, branchErr := cmd.Output(); branchErr == nil {
+					branchOut := strings.TrimSpace(string(branchBytes))
+					if branchOut != "" && branchOut != "HEAD" {
+						pushBranch = branchOut
+					}
+				}
+			}
+			// Last resort for spec mode: generate a default branch from flow run ID
+			if pushBranch == "" && mode == "spec" {
+				shortID := flowRun.ID
+				if len(shortID) > 8 {
+					shortID = shortID[:8]
+				}
+				pushBranch = fmt.Sprintf("docs/flow-%s", shortID)
+				e.logger.Infow("Generated default branch for spec mode", "branch", pushBranch, "flow_run_id", flowRun.ID)
 			}
 			if pushBranch == "" {
 				return fmt.Errorf("cannot push integration: no branch available (gitBranch and resp.GitMetadata.Branch both empty)")

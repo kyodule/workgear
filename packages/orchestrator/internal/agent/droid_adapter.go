@@ -198,6 +198,12 @@ func (a *DroidAdapter) ParseResponse(resp *ExecutorResponse) (*AgentResponse, er
 	if errMsg, ok := raw["error"].(string); ok && errMsg != "" {
 		output["error"] = errMsg
 		output["summary"] = errMsg
+		if resp.Stderr != "" {
+			output["stderr"] = resp.Stderr
+		}
+		if droidStderr, ok := raw["droid_stderr"].(string); ok && droidStderr != "" {
+			output["droid_stderr"] = droidStderr
+		}
 	} else {
 		// Extract result text from ACP response
 		if result, ok := raw["result"].(string); ok {

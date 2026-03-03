@@ -309,6 +309,14 @@ acp_wait_response() {
                 if [ -n "$tool_name" ]; then
                     emit_stream_event "system" "log" "Tool call: $tool_name"
                 fi
+                # Capture ExitSpecMode plan content as the main result
+                if [ "$tool_name" = "ExitSpecMode" ]; then
+                    local plan_content=$(echo "$line" | jq -r '.params.update.input.plan // empty' 2>/dev/null)
+                    if [ -n "$plan_content" ]; then
+                        ACP_RESPONSE_TEXT="${plan_content}"
+                        emit_stream_event "system" "log" "Captured ExitSpecMode plan ($(echo "$plan_content" | wc -c) bytes)"
+                    fi
+                fi
                 got_output=true
                 in_tool_call=true
             elif [ "$update_type" = "tool_result" ]; then
@@ -416,7 +424,13 @@ rm -f "$ACP_IN" "$ACP_OUT"
 if [ "$ACP_FAILED" = "true" ]; then
     emit_stream_event "result" "error" "ACP execution failed"
     ERROR_MSG=$(echo "$ACP_LAST_RESPONSE" | jq -r '.error.message // "ACP execution failed"' 2>/dev/null)
-    echo "{\"error\": \"$ERROR_MSG\"}" > "$RESULT_FILE"
+    DROID_STDERR=""
+    if [ -f /tmp/droid_stderr.log ] && [ -s /tmp/droid_stderr.log ]; then
+        DROID_STDERR=$(tail -c 2000 /tmp/droid_stderr.log)
+        log_info "Droid CLI stderr: $DROID_STDERR"
+    fi
+    jq -n --arg error "$ERROR_MSG" --arg stderr "$DROID_STDERR" \
+        '{error: $error, droid_stderr: $stderr}' > "$RESULT_FILE"
 else
     emit_stream_event "result" "success" "Droid execution completed"
     jq -n \
