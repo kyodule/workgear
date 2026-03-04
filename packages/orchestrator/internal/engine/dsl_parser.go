@@ -65,6 +65,15 @@ type NodeConfigDef struct {
 	Fallback               *FallbackConfigDef `yaml:"fallback"`
 	// Git configuration for agent_task nodes
 	Git                    *GitConfigDef     `yaml:"git"`
+	// system_init output configuration
+	Output                 map[string]interface{} `yaml:"output"` // Template expressions for system_init node outputs
+	OutputFromVariables    []OutputVarMapping     `yaml:"output_from_variables"` // Direct variable-to-output mapping (avoids YAML escaping issues)
+}
+
+// OutputVarMapping maps a flow variable directly to a node output key
+type OutputVarMapping struct {
+	Key      string `yaml:"key"`      // output key name
+	Variable string `yaml:"variable"` // flow variable name to read from
 }
 
 // GitConfigDef defines git branch/PR configuration for agent_task nodes

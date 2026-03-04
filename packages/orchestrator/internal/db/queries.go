@@ -641,6 +641,32 @@ func (c *Client) CancelStaleFlowRuns(ctx context.Context, staleThreshold time.Du
 	return flowCount, nil
 }
 
+// SyncStaleDslSnapshots updates dsl_snapshot of active flow_runs to match their workflow's current DSL.
+// This prevents stale DSL snapshots from causing issues after template updates.
+func (c *Client) SyncStaleDslSnapshots(ctx context.Context) (int, error) {
+	rows, err := c.pool.Query(ctx, `
+		UPDATE flow_runs fr
+		SET dsl_snapshot = w.dsl
+		FROM workflows w
+		WHERE fr.workflow_id = w.id
+		  AND fr.status IN ('running', 'pending')
+		  AND fr.dsl_snapshot IS DISTINCT FROM w.dsl
+		RETURNING fr.id
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("sync stale DSL snapshots: %w", err)
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		var id string
+		_ = rows.Scan(&id)
+		count++
+	}
+	return count, rows.Err()
+}
+
 // ─── Timeline Queries ───
 
 // UpdateNodeRunInput sets the input of a node run
@@ -805,6 +831,25 @@ func (c *Client) HasPreviousFlowOutput(ctx context.Context, flowRunID, nodeID st
 		)
 	`, flowRunID, nodeID).Scan(&exists)
 	return exists, err
+}
+
+// GetRunningFlowRunIDs returns all flow_run IDs in 'running' status.
+func (c *Client) GetRunningFlowRunIDs(ctx context.Context) ([]string, error) {
+	rows, err := c.pool.Query(ctx, `SELECT id FROM flow_runs WHERE status = 'running'`)
+	if err != nil {
+		return nil, fmt.Errorf("get running flow runs: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
 }
 
 // UpdateTaskColumn moves a task to the specified kanban column by column name.

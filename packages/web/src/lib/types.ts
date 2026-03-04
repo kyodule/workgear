@@ -220,6 +220,23 @@ export interface ArtifactVersion {
   createdAt: string
 }
 
+export interface Story {
+  id: string
+  title: string
+  priority?: string
+  storyPoints?: number
+  content: string
+}
+
+export interface CreateTaskFromArtifactDto {
+  projectId: string
+  columnId: string
+  artifactId: string
+  selectedStories: Story[]
+  taskTitle: string
+  flowType: 'simple' | 'full'
+}
+
 // Agent Type 定义（系统固化）
 export interface ProviderField {
   key: string

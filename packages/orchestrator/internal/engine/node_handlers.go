@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -101,6 +102,13 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 			} else {
 				prompt = rendered
 			}
+		}
+	}
+
+	// Validate rendered prompt before sending to agent
+	if prompt != "" {
+		if err := validateRenderedPrompt(prompt, nodeRun.NodeID); err != nil {
+			return fmt.Errorf("prompt validation failed: %w", err)
 		}
 	}
 
@@ -668,6 +676,12 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 			e.logger.Warnw("opsx_plan validation failed", "error", validationErr, "node_id", nodeRun.NodeID)
 			return fmt.Errorf("opsx_plan validation failed: %w", validationErr)
 		}
+	}
+
+	// 6d-3. Validate agent output (prevent "fake completion" with empty result)
+	if validationErr := e.validateAgentOutput(mode, resp.Output, nodeDef); validationErr != nil {
+		e.logger.Warnw("Agent output validation failed", "error", validationErr, "node_id", nodeRun.NodeID, "mode", mode)
+		return fmt.Errorf("agent output validation failed: %w", validationErr)
 	}
 
 	// 6e. Handle transient artifacts (if configured)
@@ -1474,6 +1488,95 @@ func (e *FlowExecutor) validateOpsxPlanResult(resp *agent.AgentResponse, changeN
 	return nil
 }
 
+// ─── system_init ───
+
+func (e *FlowExecutor) executeSystemInit(ctx context.Context, nodeRun *db.NodeRun) error {
+	// System init: render output templates and complete immediately
+	// Used for initializing flow variables from DSL config
+
+	// 1. Load DAG to get node config
+	flowRun, err := e.db.GetFlowRun(ctx, nodeRun.FlowRunID)
+	if err != nil {
+		return fmt.Errorf("load flow run: %w", err)
+	}
+
+	nodeDef, err := e.getNodeDef(flowRun, nodeRun.NodeID)
+	if err != nil {
+		return err
+	}
+
+	// 2. Build runtime template context
+	runtimeCtx := e.buildRuntimeContext(ctx, flowRun, nodeRun)
+
+	// 3. Build output
+	output := make(map[string]any)
+
+	// 3a. output_from_variables: read raw variable values directly (safe for multiline/special chars)
+	if nodeDef.Config != nil && len(nodeDef.Config.OutputFromVariables) > 0 {
+		// Parse flow run variables
+		var vars map[string]string
+		if flowRun.Variables != nil {
+			_ = json.Unmarshal([]byte(*flowRun.Variables), &vars)
+		}
+		if vars == nil {
+			vars = make(map[string]string)
+		}
+
+		for _, mapping := range nodeDef.Config.OutputFromVariables {
+			if val, ok := vars[mapping.Variable]; ok {
+				output[mapping.Key] = val
+			} else {
+				e.logger.Warnw("Variable not found for output mapping", "variable", mapping.Variable, "key", mapping.Key)
+				output[mapping.Key] = ""
+			}
+		}
+	}
+
+	// 3b. output: render template expressions (for simple values without special chars)
+	if nodeDef.Config != nil && nodeDef.Config.Output != nil {
+		for key, tmpl := range nodeDef.Config.Output {
+			if tmplStr, ok := tmpl.(string); ok {
+				rendered, err := RenderTemplate(tmplStr, runtimeCtx)
+				if err != nil {
+					e.logger.Warnw("Failed to render output template", "key", key, "error", err)
+					output[key] = tmplStr
+				} else {
+					output[key] = rendered
+				}
+			} else {
+				output[key] = tmpl
+			}
+		}
+	}
+
+	// 4. Save output and mark completed
+	if err := e.db.UpdateNodeRunOutput(ctx, nodeRun.ID, output); err != nil {
+		return fmt.Errorf("save output: %w", err)
+	}
+	if err := e.db.UpdateNodeRunStatus(ctx, nodeRun.ID, db.StatusCompleted); err != nil {
+		return fmt.Errorf("update status: %w", err)
+	}
+
+	// 5. Publish completion event
+	e.publishEvent(nodeRun.FlowRunID, nodeRun.ID, nodeRun.NodeID, "node.completed", map[string]any{
+		"output": output,
+	})
+
+	// 6. Record timeline event
+	e.recordTimeline(ctx, flowRun.TaskID, nodeRun.FlowRunID, nodeRun.ID, "system_init_completed", map[string]any{
+		"node_id":   nodeRun.NodeID,
+		"node_name": ptrStr(nodeRun.NodeName),
+		"output":    output,
+	})
+
+	e.logger.Infow("System init completed",
+		"node_id", nodeRun.NodeID,
+		"output_keys", len(output),
+	)
+
+	return nil
+}
+
 // ─── agent_dispatch ───
 
 // AgentPoolItem represents a candidate agent in the dispatch pool
@@ -1826,6 +1929,63 @@ func parseJSONFromAgentOutput(resp *agent.AgentResponse, target interface{}) err
 	}
 	if err := json.Unmarshal(data, target); err != nil {
 		return fmt.Errorf("unmarshal output: %w", err)
+	}
+
+	return nil
+}
+
+// ─── Validation Helpers ───
+
+// validateRenderedPrompt checks that the rendered prompt is non-trivial and
+// doesn't contain unresolved template variables.
+func validateRenderedPrompt(prompt string, nodeID string) error {
+	trimmed := strings.TrimSpace(prompt)
+	if len(trimmed) < 20 {
+		return fmt.Errorf("rendered prompt too short (%d chars) for node %s", len(trimmed), nodeID)
+	}
+
+	// Check for unresolved template variables (pongo2 silently renders them as empty string,
+	// but raw {{ }} left in the prompt indicates a rendering failure)
+	unresolvedPattern := regexp.MustCompile(`\{\{.*?\}\}`)
+	unresolvedMatches := unresolvedPattern.FindAllString(trimmed, -1)
+	if len(unresolvedMatches) > 0 {
+		return fmt.Errorf("rendered prompt has %d unresolved template variables for node %s: %v",
+			len(unresolvedMatches), nodeID, unresolvedMatches)
+	}
+
+	return nil
+}
+
+// validateAgentOutput checks that agent produced meaningful output before marking completed.
+// Prevents "fake completion" where agent returns empty result but node is marked completed.
+func (e *FlowExecutor) validateAgentOutput(mode string, output map[string]any, nodeDef *NodeDef) error {
+	// generate_change_name has its own extraction logic, skip
+	if mode == "generate_change_name" {
+		return nil
+	}
+	// code_review is transient, may not produce result/summary
+	if nodeDef.Config != nil && nodeDef.Config.Transient {
+		return nil
+	}
+	// opsx_apply / execute modes: primary value is git commits, not text output
+	if mode == "opsx_apply" || mode == "execute" {
+		return nil
+	}
+
+	resultStr, _ := output["result"].(string)
+	summaryStr, _ := output["summary"].(string)
+	content := strings.TrimSpace(resultStr + summaryStr)
+
+	if len(content) < 50 {
+		return fmt.Errorf("agent output too short (%d chars), likely incomplete or empty", len(content))
+	}
+
+	// spec mode with artifact config: also verify artifact content is extractable
+	if mode == "spec" && nodeDef.Config != nil && nodeDef.Config.Artifact != nil {
+		artifactContent := extractArtifactContent(nodeDef.Config.Artifact.Type, output)
+		if len(strings.TrimSpace(artifactContent)) < 50 {
+			return fmt.Errorf("spec artifact content too short (%d chars)", len(strings.TrimSpace(artifactContent)))
+		}
 	}
 
 	return nil
