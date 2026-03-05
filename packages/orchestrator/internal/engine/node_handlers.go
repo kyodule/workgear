@@ -470,21 +470,33 @@ func (e *FlowExecutor) executeAgentTask(ctx context.Context, nodeRun *db.NodeRun
 			filePath = rendered
 		}
 
-		// Check if agent has meaningful result in output
+		// File-first strategy: always try reading the file from worktree before using stdout.
+		// Agent often writes real content to file but returns only a summary in stdout.
 		resultStr, _ := resp.Output["result"].(string)
-		hasRealResult := len(strings.TrimSpace(resultStr)) > 100
+		hasRealResult := false
 
-		// If no meaningful result, try to read file that agent may have written via Create tool
+		// 1. Try exact file path first (highest priority)
+		absPath := filepath.Join(worktreePath, filePath)
+		if fileBytes, err := os.ReadFile(absPath); err == nil && len(fileBytes) > 100 {
+			resultStr = string(fileBytes)
+			hasRealResult = true
+			e.logger.Infow("Loaded spec artifact from worktree file (file-first)", "file_path", filePath, "size", len(resultStr))
+		}
+
+		// 2. If file not found, check if stdout result is real content (not just a summary)
 		if !hasRealResult {
-			absPath := filepath.Join(worktreePath, filePath)
-			if fileBytes, err := os.ReadFile(absPath); err == nil && len(fileBytes) > 100 {
-				resultStr = string(fileBytes)
+			stdoutResult, _ := resp.Output["result"].(string)
+			if isRealArtifactContent(stdoutResult, nodeDef.Config.Artifact.Type) {
+				resultStr = stdoutResult
 				hasRealResult = true
-				e.logger.Infow("Recovered spec artifact from worktree file (exact path)", "file_path", filePath, "size", len(resultStr))
+				e.logger.Infow("Using stdout result as artifact (passed quality check)", "size", len(resultStr))
+			} else if len(strings.TrimSpace(stdoutResult)) > 0 {
+				e.logger.Infow("Stdout result failed quality check, will try git fallback",
+					"size", len(stdoutResult), "artifact_type", nodeDef.Config.Artifact.Type)
 			}
 		}
 
-		// Wider fallback: scan git diff for new/modified markdown files
+		// 3. Wider fallback: scan git diff for new/modified markdown files
 		if !hasRealResult {
 			cmd := exec.CommandContext(ctx, "git", "diff", "--name-only", "--diff-filter=AM", "HEAD")
 			cmd.Dir = worktreePath
@@ -1051,6 +1063,51 @@ func extractArtifactContent(artifactType string, output map[string]any) string {
 	}
 
 	return ""
+}
+
+// isRealArtifactContent checks whether the given text looks like actual artifact content
+// rather than an agent conversational summary (e.g. "Let me read the docs... Done!").
+func isRealArtifactContent(text string, artifactType string) bool {
+	trimmed := strings.TrimSpace(text)
+	if len(trimmed) < 200 {
+		return false
+	}
+
+	// Count markdown structural indicators
+	lines := strings.Split(trimmed, "\n")
+	headingCount := 0
+	listItemCount := 0
+	for _, line := range lines {
+		l := strings.TrimSpace(line)
+		if strings.HasPrefix(l, "#") {
+			headingCount++
+		}
+		if strings.HasPrefix(l, "- ") || strings.HasPrefix(l, "* ") || (len(l) > 2 && l[0] >= '1' && l[0] <= '9' && l[1] == '.') {
+			listItemCount++
+		}
+	}
+
+	// Type-specific checks
+	switch artifactType {
+	case "user_story":
+		hasStoryMarker := strings.Contains(trimmed, "US-") ||
+			strings.Contains(trimmed, "Story") ||
+			strings.Contains(trimmed, "As a") ||
+			strings.Contains(trimmed, "Given") ||
+			strings.Contains(trimmed, "验收标准")
+		return hasStoryMarker && headingCount >= 2
+	case "prd":
+		hasPrdMarker := strings.Contains(trimmed, "需求") ||
+			strings.Contains(trimmed, "功能") ||
+			strings.Contains(trimmed, "Requirement") ||
+			strings.Contains(trimmed, "Feature")
+		return hasPrdMarker && headingCount >= 3
+	case "spec", "tech_spec", "plan":
+		return headingCount >= 3 && len(trimmed) > 500
+	}
+
+	// Generic: must have meaningful markdown structure
+	return headingCount >= 2 && (listItemCount >= 3 || len(trimmed) > 500)
 }
 
 // updateTaskGitInfo updates the task's git branch and records git timeline events
