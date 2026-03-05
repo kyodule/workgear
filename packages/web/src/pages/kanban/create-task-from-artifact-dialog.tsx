@@ -89,15 +89,22 @@ export function CreateTaskFromArtifactDialog({
     }
   }
 
-  // 解析 User Stories
+  // 解析 User Stories（兼容多种格式）
   function parseUserStories(content: string): Story[] {
     const stories: Story[] = []
     const lines = content.split('\n')
     let currentStory: Partial<Story> | null = null
 
+    // 支持的格式：
+    // #### US-001: 标题 (P0, 5SP)
+    // ### US-01: 标题
+    // US-01: 标题
+    // **US-01: 标题**
+    const storyPattern = /^(?:#{2,4}\s+)?(?:\*{0,2})(US-\d+)[：:]\s*(.+?)(?:\*{0,2})(?:\s*[（(]([P0-3])(?:[,，]\s*(\d+)\s*SP)?[)）])?$/
+
     for (const line of lines) {
-      // 匹配 #### US-001: 标题 (P0, 5SP) 或 #### US-001: 标题 (P0)
-      const match = line.match(/^####?\s+(US-\d+):\s*(.+?)(?:\s*\(([P0-3])(?:,\s*(\d+)SP)?\))?$/)
+      const trimmed = line.trim()
+      const match = trimmed.match(storyPattern)
       if (match) {
         if (currentStory && currentStory.id) {
           stories.push(currentStory as Story)
@@ -109,7 +116,7 @@ export function CreateTaskFromArtifactDialog({
           storyPoints: match[4] ? parseInt(match[4]) : undefined,
           content: '',
         }
-      } else if (currentStory && line.trim()) {
+      } else if (currentStory && trimmed) {
         currentStory.content += line + '\n'
       }
     }
