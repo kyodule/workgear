@@ -58,19 +58,20 @@ export async function taskRoutes(app: FastifyInstance) {
       projectId: string
       columnId: string
       artifactId: string
-      selectedStories: Array<{ id: string; title: string; priority?: string; storyPoints?: number; content: string }>
+      selectedStories?: Array<{ id: string; title: string; priority?: string; storyPoints?: number; content: string }>
       taskTitle: string
       flowType: 'simple' | 'full'
+      artifactContent?: string
     }
   }>('/from-artifact', async (request, reply) => {
-    const { projectId, columnId, artifactId, selectedStories, taskTitle, flowType } = request.body
+    const { projectId, columnId, artifactId, selectedStories, taskTitle, flowType, artifactContent } = request.body
 
     // 验证输入
     if (!taskTitle || taskTitle.trim().length === 0) {
       return reply.status(422).send({ error: 'Task title is required' })
     }
-    if (!selectedStories || selectedStories.length === 0) {
-      return reply.status(422).send({ error: 'At least one story must be selected' })
+    if ((!selectedStories || selectedStories.length === 0) && !artifactContent) {
+      return reply.status(422).send({ error: 'Either selectedStories or artifactContent must be provided' })
     }
     if (flowType !== 'simple' && flowType !== 'full') {
       return reply.status(422).send({ error: 'flowType must be "simple" or "full"' })
@@ -121,18 +122,22 @@ export async function taskRoutes(app: FastifyInstance) {
       .where(eq(tasks.columnId, columnId))
     const maxPosition = existing.reduce((max, t) => Math.max(max, t.position), -1)
 
-    // 构建 selected_stories 内容（完整的 markdown）
-    const storiesMarkdown = selectedStories.map(s => {
-      const priorityText = s.priority ? ` (${s.priority}${s.storyPoints ? `, ${s.storyPoints}SP` : ''})` : ''
-      return `#### ${s.id}: ${s.title}${priorityText}\n\n${s.content}`
-    }).join('\n\n')
+    // 构建 selected_stories 内容
+    const storiesMarkdown = selectedStories && selectedStories.length > 0
+      ? selectedStories.map(s => {
+          const priorityText = s.priority ? ` (${s.priority}${s.storyPoints ? `, ${s.storyPoints}SP` : ''})` : ''
+          return `#### ${s.id}: ${s.title}${priorityText}\n\n${s.content}`
+        }).join('\n\n')
+      : artifactContent!
+
+    const storiesCount = selectedStories && selectedStories.length > 0 ? selectedStories.length : 0
 
     // 创建任务
     const [task] = await db.insert(tasks).values({
       projectId,
       columnId,
       title: taskTitle.trim(),
-      description: `从产物创建：${selectedStories.length} 个 User Stories`,
+      description: `从产物创建：${storiesCount > 0 ? `${storiesCount} 个 User Stories` : '完整产物内容'}`,
       position: maxPosition + 1,
     }).returning()
 
@@ -193,7 +198,7 @@ export async function taskRoutes(app: FastifyInstance) {
       content: {
         workflow_name: workflow.name,
         flow_type: flowType,
-        stories_count: selectedStories.length,
+        stories_count: storiesCount,
         artifact_id: artifactId,
       },
     })

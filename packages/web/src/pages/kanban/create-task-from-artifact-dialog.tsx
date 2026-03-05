@@ -142,8 +142,13 @@ export function CreateTaskFromArtifactDialog({
         const lastId = selectedStories[selectedStories.length - 1].id
         setValue('taskTitle', `实现：${firstId}~${lastId}`)
       }
+    } else if (selectedArtifactId && parsedStories.length === 0) {
+      const artifact = artifacts.find(a => a.id === selectedArtifactId)
+      if (artifact) {
+        setValue('taskTitle', `实现：${artifact.title}`)
+      }
     }
-  }, [selectedStoryIds, parsedStories, setValue])
+  }, [selectedStoryIds, parsedStories, selectedArtifactId, artifacts, setValue])
 
   function toggleStory(storyId: string) {
     const newSet = new Set(selectedStoryIds)
@@ -156,15 +161,12 @@ export function CreateTaskFromArtifactDialog({
   }
 
   async function onSubmit(data: { taskTitle: string }) {
-    if (selectedStoryIds.size === 0) {
-      setError('请至少选择一个 Story')
-      return
-    }
-
     setLoading(true)
     setError('')
     try {
-      const selectedStories = parsedStories.filter(s => selectedStoryIds.has(s.id))
+      const selectedStories = parsedStories.length > 0
+        ? parsedStories.filter(s => selectedStoryIds.has(s.id))
+        : []
       const payload: CreateTaskFromArtifactDto = {
         projectId,
         columnId,
@@ -172,6 +174,7 @@ export function CreateTaskFromArtifactDialog({
         selectedStories,
         taskTitle: data.taskTitle,
         flowType,
+        artifactContent: selectedStories.length === 0 ? artifactContent : undefined,
       }
 
       const result = await api.post('tasks/from-artifact', { json: payload }).json<{ task: any; flowRunId: string }>()
@@ -209,7 +212,7 @@ export function CreateTaskFromArtifactDialog({
           <Button
             type="submit"
             form="create-task-from-artifact-form"
-            disabled={loading || selectedStoryIds.size === 0}
+            disabled={loading || !selectedArtifactId}
             className={isMobile ? 'h-11 text-base w-full' : ''}
           >
             {loading ? '创建中...' : '创建任务'}

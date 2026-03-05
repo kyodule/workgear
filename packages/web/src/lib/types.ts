@@ -235,6 +235,7 @@ export interface CreateTaskFromArtifactDto {
   selectedStories: Story[]
   taskTitle: string
   flowType: 'simple' | 'full'
+  artifactContent?: string
 }
 
 // Agent Type 定义（系统固化）
